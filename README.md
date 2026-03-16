@@ -38,6 +38,10 @@ python3 moo3_purge.py --replace-with human
 python3 moo3_purge.py --replace-with sakkra
 python3 moo3_purge.py --replace-with psilon
 
+# Only purge Ithkul from planets with your species
+python3 moo3_purge.py --protect klackon
+python3 moo3_purge.py --protect human
+
 # Preview what would be changed without modifying anything
 python3 moo3_purge.py --dry-run
 

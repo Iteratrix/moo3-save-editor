@@ -9,8 +9,10 @@ Usage:
     python3 moo3_purge.py path/to/save.gam         # specific save file
     python3 moo3_purge.py --replace-with human      # convert Ithkul to Humans
     python3 moo3_purge.py --replace-with sakkra     # convert Ithkul to Sakkra
-    python3 moo3_purge.py --all                     # purge ALL Ithkul galaxy-wide
-    python3 moo3_purge.py --dry-run                 # preview without changing
+    python3 moo3_purge.py --protect klackon          # only purge from your Klackon/Tachidi planets
+    python3 moo3_purge.py --protect human            # only purge from Human planets
+    python3 moo3_purge.py --all                      # purge ALL Ithkul galaxy-wide
+    python3 moo3_purge.py --dry-run                  # preview without changing
 """
 import shutil
 import sys
@@ -29,6 +31,7 @@ def parse_args():
     args = sys.argv[1:]
     save_path = None
     replace_with = None
+    protect = None
     purge_all = False
     dry_run = False
 
@@ -41,11 +44,14 @@ def parse_args():
         elif args[i] == '--replace-with' and i + 1 < len(args):
             i += 1
             replace_with = args[i].lower()
+        elif args[i] == '--protect' and i + 1 < len(args):
+            i += 1
+            protect = args[i].lower()
         elif not args[i].startswith('-'):
             save_path = args[i]
         i += 1
 
-    return save_path, replace_with, purge_all, dry_run
+    return save_path, replace_with, protect, purge_all, dry_run
 
 
 def choose_replacement():
@@ -75,7 +81,7 @@ def choose_replacement():
 
 
 def main():
-    save_file, replace_with, purge_all, dry_run = parse_args()
+    save_file, replace_with, protect, purge_all, dry_run = parse_args()
 
     if save_file:
         save_path = Path(save_file)
@@ -105,6 +111,19 @@ def main():
     for r in regions:
         planets[(r['system'], r['sys_idx'], r['planet'])].append(r)
 
+    # Resolve --protect species
+    protect_race1 = None
+    if protect:
+        if protect not in SPECIES_BY_NAME and protect != 'ithkul':
+            print(f"\nUnknown species '{protect}'. Available:")
+            for name in sorted(SPECIES_BY_NAME):
+                print(f"  {name}")
+            sys.exit(1)
+        protect_race1 = SPECIES_BY_NAME.get(protect)
+        if protect_race1 is None:
+            print("Cannot protect Ithkul from themselves!")
+            sys.exit(1)
+
     # Find Ithkul to purge
     patches = []
     if purge_all:
@@ -112,8 +131,11 @@ def main():
     else:
         for key, regs in planets.items():
             has_ithkul = any(r['race1'] == ITHKUL_RACE1 for r in regs)
-            has_other = any(r['race1'] != ITHKUL_RACE1 for r in regs)
-            if has_ithkul and has_other:
+            if protect_race1 is not None:
+                has_protected = any(r['race1'] == protect_race1 for r in regs)
+            else:
+                has_protected = any(r['race1'] != ITHKUL_RACE1 for r in regs)
+            if has_ithkul and has_protected:
                 patches.extend(r for r in regs if r['race1'] == ITHKUL_RACE1)
 
     if not patches:
