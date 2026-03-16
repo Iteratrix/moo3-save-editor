@@ -1,0 +1,11 @@
+[project]
+name = "moo3-ithkul-purge"
+version = "1.0.0"
+description = "Remove Ithkul (Harvester) populations from your Master of Orion 3 save games"
+requires-python = ">=3.10"
+dependencies = []
+license = "MIT"
+
+[project.scripts]
+moo3-scan = "moo3_scan:main"
+moo3-purge = "moo3_purge:main"
