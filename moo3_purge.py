@@ -11,6 +11,8 @@ Usage:
     python3 moo3_purge.py --replace-with sakkra     # convert Ithkul to Sakkra
     python3 moo3_purge.py --protect klackon          # only purge from your Klackon/Tachidi planets
     python3 moo3_purge.py --protect human            # only purge from Human planets
+    python3 moo3_purge.py --planet "Alrisha VII"       # purge Ithkul from a specific planet
+    python3 moo3_purge.py --planet "Nu Hydrae II" --planet "Phelot II"  # multiple planets
     python3 moo3_purge.py --all                      # purge ALL Ithkul galaxy-wide
     python3 moo3_purge.py --dry-run                  # preview without changing
 """
@@ -32,6 +34,7 @@ def parse_args():
     save_path = None
     replace_with = None
     protect = None
+    planet_filters = []
     purge_all = False
     dry_run = False
 
@@ -47,11 +50,14 @@ def parse_args():
         elif args[i] == '--protect' and i + 1 < len(args):
             i += 1
             protect = args[i].lower()
+        elif args[i] == '--planet' and i + 1 < len(args):
+            i += 1
+            planet_filters.append(args[i].lower())
         elif not args[i].startswith('-'):
             save_path = args[i]
         i += 1
 
-    return save_path, replace_with, protect, purge_all, dry_run
+    return save_path, replace_with, protect, planet_filters, purge_all, dry_run
 
 
 def choose_replacement():
@@ -81,7 +87,7 @@ def choose_replacement():
 
 
 def main():
-    save_file, replace_with, protect, purge_all, dry_run = parse_args()
+    save_file, replace_with, protect, planet_filters, purge_all, dry_run = parse_args()
 
     if save_file:
         save_path = Path(save_file)
@@ -126,7 +132,14 @@ def main():
 
     # Find Ithkul to purge
     patches = []
-    if purge_all:
+    if planet_filters:
+        # Target specific planets by name (e.g. "Alrisha VII")
+        for key, regs in planets.items():
+            sys_name, _, p_idx = key
+            pn = planet_name(sys_name, p_idx).lower()
+            if any(f in pn for f in planet_filters):
+                patches.extend(r for r in regs if r['race1'] == ITHKUL_RACE1)
+    elif purge_all:
         patches = [r for r in regions if r['race1'] == ITHKUL_RACE1]
     else:
         for key, regs in planets.items():
