@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Scan a MOO3 save for Ithkul infestations.
+"""MOO3 Save Editor — scan species populations.
 
-Reports all Ithkul populations galaxy-wide, with special attention to planets
-shared with the player's species (where Ithkul will eat your population).
+Reports all species populations galaxy-wide, with emphasis on planets where
+Ithkul (Harvesters) cohabit with other species (bioharvesting risk).
 
 Usage:
-    python3 moo3_scan.py                    # auto-detect latest save
-    python3 moo3_scan.py path/to/save.gam   # specific save file
+    python3 moo3_species.py                    # auto-detect latest save
+    python3 moo3_species.py path/to/save.gam   # specific save file
 """
 import sys
 from collections import defaultdict

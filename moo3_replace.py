@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""Purge Ithkul from your planets in a MOO3 save.
+"""MOO3 Save Editor — replace species populations.
 
-Finds all regions where Ithkul (Harvesters) share a planet with another species
-and converts them to a species of your choice. Creates a .bak backup before patching.
+Replace one species with another on specific planets or galaxy-wide.
+Defaults to replacing Ithkul (Harvesters) on shared planets. Creates
+a .bak backup before patching.
 
 Usage:
-    python3 moo3_purge.py                          # auto-detect, interactive
-    python3 moo3_purge.py path/to/save.gam         # specific save file
-    python3 moo3_purge.py --replace-with human      # convert to Humans
-    python3 moo3_purge.py --target klackon --replace-with human --planet "Psi Tauri I"  # any species
-    python3 moo3_purge.py --protect klackon          # only purge from your Klackon/Tachidi planets
-    python3 moo3_purge.py --protect human            # only purge from Human planets
-    python3 moo3_purge.py --planet "Alrisha VII"       # purge Ithkul from a specific planet
-    python3 moo3_purge.py --planet "Nu Hydrae II" --planet "Phelot II"  # multiple planets
-    python3 moo3_purge.py --all                      # purge ALL Ithkul galaxy-wide
-    python3 moo3_purge.py --dry-run                  # preview without changing
+    python3 moo3_replace.py                         # auto-detect, interactive
+    python3 moo3_replace.py path/to/save.gam        # specific save file
+    python3 moo3_replace.py --replace-with darlok    # convert Ithkul to Darloks
+    python3 moo3_replace.py --target klackon --replace-with human --planet "Psi Tauri I"
+    python3 moo3_replace.py --protect klackon        # only on planets with Klackons
+    python3 moo3_replace.py --planet "Alrisha VII"   # specific planet
+    python3 moo3_replace.py --all                    # galaxy-wide
+    python3 moo3_replace.py --dry-run                # preview without changing
 """
 import shutil
 import sys
