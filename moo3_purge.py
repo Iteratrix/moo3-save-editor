@@ -7,8 +7,8 @@ and converts them to a species of your choice. Creates a .bak backup before patc
 Usage:
     python3 moo3_purge.py                          # auto-detect, interactive
     python3 moo3_purge.py path/to/save.gam         # specific save file
-    python3 moo3_purge.py --replace-with human      # convert Ithkul to Humans
-    python3 moo3_purge.py --replace-with sakkra     # convert Ithkul to Sakkra
+    python3 moo3_purge.py --replace-with human      # convert to Humans
+    python3 moo3_purge.py --target klackon --replace-with human --planet "Psi Tauri I"  # any species
     python3 moo3_purge.py --protect klackon          # only purge from your Klackon/Tachidi planets
     python3 moo3_purge.py --protect human            # only purge from Human planets
     python3 moo3_purge.py --planet "Alrisha VII"       # purge Ithkul from a specific planet
@@ -26,7 +26,7 @@ from moo3save import (
 )
 
 # Reverse lookup: name -> race1 ID
-SPECIES_BY_NAME = {name.lower(): id for id, name in SPECIES.items() if id != ITHKUL_RACE1}
+SPECIES_BY_NAME = {name.lower(): id for id, name in SPECIES.items()}
 
 
 def parse_args():
@@ -34,6 +34,7 @@ def parse_args():
     save_path = None
     replace_with = None
     protect = None
+    target = None
     planet_filters = []
     purge_all = False
     dry_run = False
@@ -50,6 +51,9 @@ def parse_args():
         elif args[i] == '--protect' and i + 1 < len(args):
             i += 1
             protect = args[i].lower()
+        elif args[i] == '--target' and i + 1 < len(args):
+            i += 1
+            target = args[i].lower()
         elif args[i] == '--planet' and i + 1 < len(args):
             i += 1
             planet_filters.append(args[i].lower())
@@ -57,7 +61,7 @@ def parse_args():
             save_path = args[i]
         i += 1
 
-    return save_path, replace_with, protect, planet_filters, purge_all, dry_run
+    return save_path, replace_with, protect, target, planet_filters, purge_all, dry_run
 
 
 def choose_replacement():
@@ -87,7 +91,21 @@ def choose_replacement():
 
 
 def main():
-    save_file, replace_with, protect, planet_filters, purge_all, dry_run = parse_args()
+    save_file, replace_with, protect, target, planet_filters, purge_all, dry_run = parse_args()
+
+    # Resolve --target species (defaults to Ithkul)
+    all_species_by_name = {name.lower(): id for id, name in SPECIES.items()}
+    if target:
+        if target not in all_species_by_name:
+            print(f"Unknown target species '{target}'. Available:")
+            for name in sorted(all_species_by_name):
+                print(f"  {name}")
+            sys.exit(1)
+        target_race1 = all_species_by_name[target]
+        target_name = SPECIES[target_race1]
+    else:
+        target_race1 = ITHKUL_RACE1
+        target_name = "Ithkul"
 
     if save_file:
         save_path = Path(save_file)
@@ -120,54 +138,53 @@ def main():
     # Resolve --protect species
     protect_race1 = None
     if protect:
-        if protect not in SPECIES_BY_NAME and protect != 'ithkul':
+        if protect not in all_species_by_name:
             print(f"\nUnknown species '{protect}'. Available:")
-            for name in sorted(SPECIES_BY_NAME):
+            for name in sorted(all_species_by_name):
                 print(f"  {name}")
             sys.exit(1)
-        protect_race1 = SPECIES_BY_NAME.get(protect)
-        if protect_race1 is None:
-            print("Cannot protect Ithkul from themselves!")
+        protect_race1 = all_species_by_name[protect]
+        if protect_race1 == target_race1:
+            print(f"Cannot protect {target_name} from themselves!")
             sys.exit(1)
 
-    # Find Ithkul to purge
+    # Find target species to replace
     patches = []
     if planet_filters:
-        # Target specific planets by name (e.g. "Alrisha VII")
         for key, regs in planets.items():
             sys_name, _, p_idx = key
             pn = planet_name(sys_name, p_idx).lower()
             if any(f in pn for f in planet_filters):
-                patches.extend(r for r in regs if r['race1'] == ITHKUL_RACE1)
+                patches.extend(r for r in regs if r['race1'] == target_race1)
     elif purge_all:
-        patches = [r for r in regions if r['race1'] == ITHKUL_RACE1]
+        patches = [r for r in regions if r['race1'] == target_race1]
     else:
         for key, regs in planets.items():
-            has_ithkul = any(r['race1'] == ITHKUL_RACE1 for r in regs)
+            has_target = any(r['race1'] == target_race1 for r in regs)
             if protect_race1 is not None:
                 has_protected = any(r['race1'] == protect_race1 for r in regs)
             else:
-                has_protected = any(r['race1'] != ITHKUL_RACE1 for r in regs)
-            if has_ithkul and has_protected:
-                patches.extend(r for r in regs if r['race1'] == ITHKUL_RACE1)
+                has_protected = any(r['race1'] != target_race1 for r in regs)
+            if has_target and has_protected:
+                patches.extend(r for r in regs if r['race1'] == target_race1)
 
     if not patches:
         if purge_all:
-            print("\nNo Ithkul found anywhere. The galaxy is clean!")
+            print(f"\nNo {target_name} found anywhere!")
         else:
-            print("\nNo Ithkul found sharing planets with other species. Nothing to do!")
+            print(f"\nNo {target_name} found to replace. Nothing to do!")
         if sys.platform == 'win32':
             input("\nPress Enter to exit...")
         sys.exit(0)
 
     # Determine replacement species
     if replace_with:
-        if replace_with not in SPECIES_BY_NAME:
+        if replace_with not in all_species_by_name:
             print(f"\nUnknown species '{replace_with}'. Available:")
-            for name in sorted(SPECIES_BY_NAME):
+            for name in sorted(all_species_by_name):
                 print(f"  {name}")
             sys.exit(1)
-        new_race1 = SPECIES_BY_NAME[replace_with]
+        new_race1 = all_species_by_name[replace_with]
         new_name = SPECIES[new_race1]
     elif sys.stdin.isatty():
         new_race1, new_name = choose_replacement()
@@ -175,9 +192,10 @@ def main():
         new_race1 = KLACKON_RACE1
         new_name = "Klackon"
 
-    mode = "galaxy-wide" if purge_all else "on shared planets"
+    scope = "on " + ", ".join(f'"{f}"' for f in planet_filters) if planet_filters else \
+            "galaxy-wide" if purge_all else "on shared planets"
     action = "Would convert" if dry_run else "Converting"
-    print(f"\n{action} {len(patches)} Ithkul regions to {new_name} {mode}:\n")
+    print(f"\n{action} {len(patches)} {target_name} regions to {new_name} {scope}:\n")
 
     total_pop = 0
     patched = 0
@@ -187,8 +205,8 @@ def main():
         r2_off = p['offset'] + 11
         cur_r1 = data[r1_off]
 
-        if cur_r1 != ITHKUL_RACE1:
-            print(f"  SKIP {pn} R{p['region']}: race1 is {cur_r1}, not {ITHKUL_RACE1}")
+        if cur_r1 != target_race1:
+            print(f"  SKIP {pn} R{p['region']}: race1 is {cur_r1}, not {target_race1}")
             continue
 
         if not dry_run:
@@ -213,7 +231,7 @@ def main():
 
     print("Writing patched save...")
     save_path.write_bytes(data)
-    print(f"\nDone! Converted {patched} Ithkul regions ({total_pop:.2f} pop) to {new_name}.")
+    print(f"\nDone! Converted {patched} {target_name} regions ({total_pop:.2f} pop) to {new_name}.")
 
     if sys.platform == 'win32':
         input("\nPress Enter to exit...")
