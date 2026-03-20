@@ -18,20 +18,27 @@ import platform
 
 # Species type IDs (race1 field)
 SPECIES = {
-    0: "Human",
-    1: "Sakkra",
-    2: "Meklar",
-    3: "Silicoid",
-    4: "Psilon",
-    5: "Ithkul",     # Harvesters - eat other populations
-    6: "Klackon",     # Includes Tachidi sub-races
-    7: "Raas",
-    8: "Nommo",
-    9: "Grendarl",
-    10: "Cynoid",
-    11: "Imsaeis",
-    12: "Eoladi",
-    13: "Geodic",
+    0: "Human",         # Humanoid (Human, Evon, Psilon)
+    1: "Imsaeis",       # Etherean (Imsaeis, Eoladi)
+    2: "Silicoid",      # Lithic
+    3: "Meklar",        # Cybernetic (Meklar, Cynoid)
+    4: "Trilarian",     # Ichthytosian (Trilarian, Nommo)
+    5: "Ithkul",        # Harvester - eats other populations
+    6: "Klackon",       # Insecta (Klackon, Tachidi)
+    7: "Sakkra",        # Saurian (Sakkra, Raas, Grendarl)
+    8: "Darlok",        # Metashifter (Shapeshifter)
+    9: "NonCorporeal",  # Non-corporeal beings
+    10: "Protoplasmic", # Protoplasmic
+    11: "Plant",        # Plant species
+    12: "Fungal",       # Fungal species
+    13: "Avian",        # Avian (includes Alkari)
+    14: "Gargantua",    # Giant species
+    15: "Bulrathi",     # Ursoid
+    16: "Mrrshan",      # Feline
+    17: "Elerian",      # Telepathic humanoid
+    18: "Gnolam",       # Trader species
+    19: "Elder",        # Elder Civilization
+    20: "ComBot",       # Combat robots
 }
 
 ITHKUL_RACE1 = 5
