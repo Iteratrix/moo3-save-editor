@@ -59,3 +59,5 @@ jobs:
         run: |
           wasm-pack build moo3-save-web --target nodejs --out-dir ../target/wasm-node-test
           node scripts/bridge-test.mjs
+      - name: UI test (headless Chrome over CDP)
+        run: node scripts/ui-test.mjs
