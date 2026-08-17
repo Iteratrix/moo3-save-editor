@@ -151,12 +151,53 @@ pub fn verify(bytes: &[u8]) -> Outcome {
         Ok(fields) => fields,
         Err(reason) => return Outcome::Fail(reason),
     };
+    let treasuries = match check_treasuries(bytes, &galaxy, &empires) {
+        Ok(treasuries) => treasuries,
+        Err(reason) => return Outcome::Fail(reason),
+    };
 
     Outcome::Pass(format!(
-        "{} systems, {} populated regions, {} empires, {} owned systems, {edit}, {fields}",
+        "{} systems, {} populated regions, {} empires, {} owned systems, {edit}, {fields}, {treasuries}",
         galaxy.systems.len(),
         galaxy.regions.len(),
         empires.len(),
         owned.len()
+    ))
+}
+
+fn check_treasuries(
+    bytes: &[u8],
+    galaxy: &Galaxy,
+    empires: &[empire::Empire],
+) -> Result<String, String> {
+    let readable: Vec<(&empire::Empire, i32)> = empires
+        .iter()
+        .filter_map(|entry| empire::treasury(bytes, entry).map(|au| (entry, au)))
+        .collect();
+    let Some((target, old)) = readable.first() else {
+        return Ok("treasury skipped (no readable records)".to_owned());
+    };
+
+    let mut edited = bytes.to_vec();
+    let wanted = old.wrapping_add(1000);
+    empire::set_treasury(&mut edited, target, wanted)
+        .map_err(|error| format!("treasury write: {error}"))?;
+    if empire::treasury(&edited, target) != Some(wanted) {
+        return Err("treasury edit did not stick".to_owned());
+    }
+    for (other, before) in readable.iter().skip(1) {
+        if empire::treasury(&edited, other) != Some(*before) {
+            return Err(format!("treasury edit disturbed empire \"{}\"", other.name));
+        }
+    }
+    let reparsed =
+        Galaxy::parse(&edited).map_err(|error| format!("reparse after treasury edit: {error}"))?;
+    if reparsed.regions != galaxy.regions {
+        return Err("galaxy changed across treasury edit".to_owned());
+    }
+    Ok(format!(
+        "treasury ok ({}/{} empires)",
+        readable.len(),
+        empires.len()
     ))
 }

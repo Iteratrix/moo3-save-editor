@@ -43,6 +43,40 @@ function render() {
   el("file-meta").textContent =
     `${summary.systems} systems · ${summary.regions} populated regions · ${summary.empires.length} empires${owned}`;
 
+  const empireRows = el("empire-table").querySelector("tbody");
+  empireRows.replaceChildren();
+  for (const empire of summary.empires) {
+    const row = document.createElement("tr");
+    const name = document.createElement("td");
+    name.textContent = empire.id === 1 ? `${empire.name} (you)` : empire.name;
+    const species = document.createElement("td");
+    species.textContent = empire.species;
+    const treasury = document.createElement("td");
+    treasury.className = "num";
+    if (empire.au === null) {
+      treasury.textContent = "?";
+    } else {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "-2147483648";
+      input.max = "2147483647";
+      input.step = "1000";
+      input.value = String(empire.au);
+      input.addEventListener("input", () => {
+        const parsed = Number.parseInt(input.value, 10);
+        const changed = Number.isFinite(parsed) &&
+          parsed >= -2147483648 && parsed <= 2147483647 && parsed !== empire.au;
+        row.classList.toggle("changed", changed);
+        if (changed) state.treasuryEdits.set(empire.id, parsed);
+        else state.treasuryEdits.delete(empire.id);
+        updateFieldsSave();
+      });
+      treasury.append(input);
+    }
+    row.append(name, species, treasury);
+    empireRows.append(row);
+  }
+
   const rows = el("species-table").querySelector("tbody");
   rows.replaceChildren();
   for (const { name, pop, regions, systems } of summary.species) {
@@ -98,7 +132,8 @@ function turnEdit() {
 }
 
 function updateFieldsSave() {
-  el("fields-save-btn").disabled = state.popEdits.size === 0 && turnEdit() === null;
+  el("fields-save-btn").disabled =
+    state.popEdits.size === 0 && state.treasuryEdits.size === 0 && turnEdit() === null;
 }
 
 function renderPlanetSearch() {
@@ -241,6 +276,7 @@ async function saveFields() {
   const edits = {
     turn: turnEdit(),
     pops: [...state.popEdits].map(([offset, pop]) => ({ offset, pop })),
+    treasuries: [...state.treasuryEdits].map(([id, au]) => ({ id, au })),
   };
   let edited;
   try {
@@ -252,7 +288,8 @@ async function saveFields() {
   const parts = [];
   if (edits.turn !== null) parts.push(`turn -> ${edits.turn}`);
   if (edits.pops.length > 0) parts.push(`${edits.pops.length} population edits`);
-  await persist(edited, `Applied ${parts.join(" and ")}`);
+  if (edits.treasuries.length > 0) parts.push(`${edits.treasuries.length} treasury edits`);
+  await persist(edited, `Applied ${parts.join(", ")}`);
 }
 
 async function loadFile(file, handle) {
@@ -271,6 +308,7 @@ async function loadFile(file, handle) {
     handle: handle ?? null,
     summary,
     popEdits: new Map(),
+    treasuryEdits: new Map(),
   };
   setStatus("");
   render();

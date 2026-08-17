@@ -22,6 +22,7 @@ struct EmpireJson {
     id: u8,
     species: String,
     name: String,
+    au: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -87,8 +88,17 @@ pub fn summarize(bytes: &[u8]) -> Result<String, JsError> {
         regions: galaxy.regions.len(),
         player_systems: owned.len(),
         empires: empires
-            .into_iter()
-            .map(|empire::Empire { id, species, name }| EmpireJson { id, species, name })
+            .iter()
+            .map(|entry| {
+                let au = empire::treasury(bytes, entry);
+                let empire::Empire { id, species, name } = entry.clone();
+                EmpireJson {
+                    id,
+                    species,
+                    name,
+                    au,
+                }
+            })
             .collect(),
         species: totals,
         known_species: species::KNOWN.iter().map(ToString::to_string).collect(),
@@ -308,30 +318,52 @@ struct PopEdit {
 }
 
 #[derive(Deserialize)]
+struct TreasuryEdit {
+    id: u8,
+    au: i32,
+}
+
+#[derive(Deserialize)]
 struct FieldEdits {
     #[serde(default)]
     turn: Option<u32>,
     #[serde(default)]
     pops: Vec<PopEdit>,
+    #[serde(default)]
+    treasuries: Vec<TreasuryEdit>,
 }
 
-/// Apply field edits (turn counter, region populations) and return the
-/// patched save bytes. Population edits address regions by the `offset`
-/// values from [`planet_regions`], which must come from the same bytes.
+/// Apply field edits (turn counter, region populations, empire
+/// treasuries) and return the patched save bytes. Population edits address
+/// regions by the `offset` values from [`planet_regions`], which must come
+/// from the same bytes; treasury edits address empires by their table id.
 ///
 /// # Errors
 ///
-/// On unparseable saves, malformed edit JSON, unknown region offsets, or
-/// out-of-range values.
+/// On unparseable saves, malformed edit JSON, unknown region offsets or
+/// empire ids, or out-of-range values.
 #[wasm_bindgen]
 pub fn apply_field_edits(bytes: &[u8], edits: &str) -> Result<Vec<u8>, JsError> {
-    let FieldEdits { turn, pops } =
-        serde_json::from_str(edits).map_err(|error| JsError::new(&error.to_string()))?;
+    let FieldEdits {
+        turn,
+        pops,
+        treasuries,
+    } = serde_json::from_str(edits).map_err(|error| JsError::new(&error.to_string()))?;
     let galaxy = parse_galaxy(bytes)?;
 
     let mut edited = bytes.to_vec();
     if let Some(turn) = turn {
         header::set_turn(&mut edited, turn).map_err(|error| JsError::new(&error.to_string()))?;
+    }
+    if !treasuries.is_empty() {
+        let table = empire::empires(bytes);
+        for TreasuryEdit { id, au } in treasuries {
+            let Some(entry) = table.iter().find(|entry| entry.id == id) else {
+                return Err(JsError::new(&format!("no empire with id {id}")));
+            };
+            empire::set_treasury(&mut edited, entry, au)
+                .map_err(|error| JsError::new(&error.to_string()))?;
+        }
     }
     for PopEdit { offset, pop } in pops {
         let Some(region) = galaxy.regions.iter().find(|region| region.offset == offset) else {

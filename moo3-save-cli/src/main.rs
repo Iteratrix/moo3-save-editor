@@ -41,6 +41,8 @@ fn usage() -> ! {
         --dry-run        preview without modifying
   moo3-save turn [file.gam] [--set <n>]
       show or set the turn counter (creates a .bak backup)
+  moo3-save treasury [file.gam] [--empire <id|name>] [--set <au>]
+      list empire treasuries, or set one (default empire: the player)
   moo3-save corpus <dir>
       run the verification battery on every .gam in <dir>
 
@@ -74,6 +76,7 @@ fn main() -> anyhow::Result<()> {
         "planet" => planet_command(rest),
         "edit" => edit_command(rest),
         "turn" => turn_command(rest),
+        "treasury" => treasury_command(rest),
         "corpus" => match rest {
             [dir] => corpus(Path::new(dir)),
             _ => usage(),
@@ -657,6 +660,97 @@ fn turn_command(args: &[String]) -> anyhow::Result<()> {
     header::set_turn(&mut bytes, new_turn)?;
     backup_and_write(&path, &bytes)?;
     println!("Turn set to {new_turn}.");
+    Ok(())
+}
+
+fn treasury_command(args: &[String]) -> anyhow::Result<()> {
+    let mut path = None;
+    let mut which: Option<String> = None;
+    let mut set: Option<i32> = None;
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--empire" => which = Some(next_value(&mut rest).clone()),
+            "--set" => set = Some(next_value(&mut rest).parse()?),
+            other if !other.starts_with('-') => path = Some(PathBuf::from(other)),
+            _ => usage(),
+        }
+    }
+
+    let path = resolve_save(path)?;
+    let mut bytes = std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+    println!("File: {}", path.display());
+    let empires = empire::empires(&bytes);
+    if empires.is_empty() {
+        bail!("no empire table found in this save");
+    }
+
+    let resolve = |query: &str| -> anyhow::Result<&empire::Empire> {
+        if let Ok(id) = query.parse::<u8>() {
+            if let Some(found) = empires.iter().find(|entry| entry.id == id) {
+                return Ok(found);
+            }
+        }
+        let query = query.to_lowercase();
+        let matches: Vec<&empire::Empire> = empires
+            .iter()
+            .filter(|entry| entry.name.to_lowercase().contains(&query))
+            .collect();
+        match matches.as_slice() {
+            [one] => Ok(one),
+            [] => bail!("no empire matches \"{query}\""),
+            many => bail!(
+                "\"{query}\" matches {} empires: {}",
+                many.len(),
+                many.iter()
+                    .map(|entry| entry.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        }
+    };
+
+    let Some(au) = set else {
+        println!(
+            "\n  {:>3}  {:<14} {:<12} {:>14}",
+            "id", "empire", "species", "treasury AU"
+        );
+        for entry in &empires {
+            let player = if entry.id == empire::PLAYER_EMPIRE_ID {
+                " [YOU]"
+            } else {
+                ""
+            };
+            match empire::treasury(&bytes, entry) {
+                Some(au) => println!(
+                    "  {:>3}  {:<14} {:<12} {:>14}{player}",
+                    entry.id, entry.name, entry.species, au
+                ),
+                None => println!(
+                    "  {:>3}  {:<14} {:<12} {:>14}{player}",
+                    entry.id, entry.name, entry.species, "?"
+                ),
+            }
+        }
+        return Ok(());
+    };
+
+    let target = match &which {
+        Some(query) => resolve(query)?,
+        None => empires
+            .iter()
+            .find(|entry| entry.id == empire::PLAYER_EMPIRE_ID)
+            .context("no player empire (id 1) in this save; pass --empire")?,
+    };
+    let old = empire::treasury(&bytes, target)
+        .with_context(|| format!("treasury record for \"{}\" not found", target.name))?;
+    println!(
+        "\n{} ({}): {old} AU -> {au} AU",
+        target.name, target.species
+    );
+    empire::set_treasury(&mut bytes, target, au)?;
+    backup_and_write(&path, &bytes)?;
+    println!("Done.");
     Ok(())
 }
 

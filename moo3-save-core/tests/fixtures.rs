@@ -34,6 +34,16 @@ fn fixture_parses_and_verifies() {
     let owned = empire::player_systems(&bytes, &galaxy);
     assert_eq!(owned.len(), 20);
 
+    let player = empires
+        .iter()
+        .find(|e| e.id == empire::PLAYER_EMPIRE_ID)
+        .expect("player empire");
+    assert_eq!(empire::treasury(&bytes, player), Some(64_573));
+
+    let mut edited = bytes.clone();
+    empire::set_treasury(&mut edited, player, 7_777_777).expect("treasury writes");
+    assert_eq!(empire::treasury(&edited, player), Some(7_777_777));
+
     let verify::Outcome::Pass(summary) = verify::verify(&bytes) else {
         panic!("expected pass");
     };

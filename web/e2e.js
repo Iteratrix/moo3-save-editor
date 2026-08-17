@@ -24,6 +24,9 @@ try {
   const planned = document.querySelectorAll("#plan-list li").length;
 
   const turnValue = document.getElementById("turn-input").value;
+  const empireRows = document.querySelectorAll("#empire-table tbody tr").length;
+  const firstAu = document.querySelector("#empire-table tbody input");
+  const auValue = firstAu?.value;
 
   document.getElementById("planet-query").value = "Alrisha I";
   document.getElementById("planet-search-btn").click();
@@ -44,11 +47,13 @@ try {
     plan.includes("would become Klackon") &&
     planned > 0 &&
     turnValue === "115" &&
+    empireRows === 11 &&
+    auValue === "64573" &&
     regionRows > 0 &&
     fieldsEnabled;
   document.title = ok
-    ? `E2E PASS: ${rows} species; ${meta}; turn ${turnValue}; ${planned} planned; ${regionRows} region rows editable`
-    : `E2E FAIL: rows=${rows}; meta=${meta}; plan=${plan}; planned=${planned}; turn=${turnValue}; regionRows=${regionRows}; fieldsEnabled=${fieldsEnabled}; status=${document.getElementById("status").textContent}`;
+    ? `E2E PASS: ${rows} species; ${meta}; turn ${turnValue}; ${empireRows} empires (you: ${auValue} AU); ${planned} planned; ${regionRows} region rows editable`
+    : `E2E FAIL: rows=${rows}; meta=${meta}; plan=${plan}; planned=${planned}; turn=${turnValue}; empires=${empireRows}; au=${auValue}; regionRows=${regionRows}; fieldsEnabled=${fieldsEnabled}; status=${document.getElementById("status").textContent}`;
 } catch (error) {
   document.title = `E2E FAIL: ${error}`;
 }

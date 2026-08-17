@@ -66,16 +66,22 @@ Cursor at marker+13: skip 1; u16 BE; u16 BE; skip 6×4; skip 8; skip 1;
 then two settings bytes (difficulty / victory-condition flags — needs a
 confirming diff).
 
-## Treasury (not yet located in current-format saves)
+## Treasury — CONFIRMED (in-game verified 2026-08-16)
 
-Facts, from Bhruic's FinanceWraparound patch and period cheat recipes:
+`i32` big-endian at **empire-name end + 20** inside the empire's `PLAYERSV`
+record (find the empire's UTF-16BE name after the `VSREYALP` marker; the
+field starts 20 bytes past the name's last byte). Verified three ways:
 
-- Signed 32-bit integer, big-endian, capped at 2,147,483,647.
-- Pre-patch saves: at empire-name string offset + 27. Post-patch (our
-  format): shifted; recipe no longer lands.
-- Fallback search space: five consecutive undecoded 8-byte fixed-point
-  slots at player-record offset +17…+56 (relative per-player in PLAYERSV),
-  which Bhruic parsed past but never mapped.
+1. Autosave-series diffing: every empire's value grows each turn by a
+   plausible net income.
+2. Bhruic's `FinanceWraparound` patch: treasury is a signed 32-bit integer
+   capped at `i32::MAX` (the period recipe's "+27 from the name" was the
+   pre-patch layout).
+3. In-game: patching the player's field to 7,777,777 displayed as ~7.78M AU.
+
+Nearby fields in the same record (name-end relative): fixed-point
+per-race constants at +26/+34/+42 (identical across turns), and cumulative
+per-empire counters (i32-shaped) further out — not yet identified.
 
 ## Ship records (unimplemented)
 

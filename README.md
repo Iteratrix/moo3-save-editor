@@ -52,6 +52,8 @@ Close the game before editing and keep the backup the page offers.
   terrain, and ecosystem via the CLI. The layout was verified against both
   the parser and the serializer of Bhruic's 2003 editor
   (`docs/region-format.md`).
+- **Empire treasuries** — any empire's AU balance, yours or the AIs'
+  (located by autosave diffing, confirmed in-game).
 - **The turn counter.**
 
 ## CLI
@@ -66,6 +68,8 @@ cargo run -p moo3-save-cli --release -- replace --mine --all --replace-with darl
 cargo run -p moo3-save-cli --release -- planet "Alrisha"    # inspect regions (owner, pop, terrain, eco)
 cargo run -p moo3-save-cli --release -- edit --planet "Alrisha I" --region 0 --pop 5.5 --eco 2
 cargo run -p moo3-save-cli --release -- turn --set 100      # rewind the turn counter
+cargo run -p moo3-save-cli --release -- treasury            # list every empire's AU
+cargo run -p moo3-save-cli --release -- treasury --set 1000000
 cargo run -p moo3-save-cli --release -- corpus <dir>        # verification battery over a save folder
 ```
 

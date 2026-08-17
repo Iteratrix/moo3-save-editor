@@ -154,10 +154,13 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 
 .region-row input { width: 7.5rem; }
-.region-row.changed input {
+.region-row.changed input,
+#empire-table tr.changed input {
   border-color: var(--accent);
   outline: 1px solid var(--accent);
 }
+
+#empire-table input { width: 9rem; text-align: right; }
 
 #turn-row input { width: 6rem; }
 

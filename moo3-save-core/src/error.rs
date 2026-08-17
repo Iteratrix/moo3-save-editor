@@ -45,6 +45,11 @@ pub enum Error {
     /// A value cannot be represented in the save's wire format.
     #[error("{what} {value} does not fit the save format's range")]
     ValueOutOfRange { what: &'static str, value: f64 },
+
+    /// An empire's `PLAYERSV` record (which holds its treasury) could not
+    /// be located by its name.
+    #[error("empire record for \"{name}\" not found in PLAYERSV")]
+    EmpireRecordNotFound { name: String },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

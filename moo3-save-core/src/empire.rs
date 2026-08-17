@@ -1,4 +1,4 @@
-//! Empire definitions and player-owned-system detection.
+//! Empire definitions, treasuries, and player-owned-system detection.
 //!
 //! The empire table sits in the first few hundred bytes of the file: one
 //! record per empire, each holding a `c1 <id>` prefix, a 4-byte ASCII code,
@@ -76,6 +76,62 @@ pub fn empires(data: &[u8]) -> Vec<Empire> {
         pos = cursor.pos();
     }
     out
+}
+
+/// Offset of the treasury `i32` past the end of an empire's name in its
+/// `PLAYERSV` record.
+///
+/// Located by diffing a consecutive autosave series (every empire's value
+/// grows each turn by a plausible net income), consistent with Bhruic's
+/// `FinanceWraparound` patch (treasury is a signed 32-bit integer capped at
+/// `i32::MAX`), and confirmed in-game: patching it changed the displayed
+/// AU balance.
+const TREASURY_OFFSET: usize = 20;
+
+fn treasury_field(data: &[u8], empire: &Empire) -> Option<usize> {
+    let players = memchr::memmem::find(data, PLAYERS_MARKER)?;
+    let encoded: Vec<u8> = empire
+        .name
+        .encode_utf16()
+        .flat_map(u16::to_be_bytes)
+        .collect();
+    let name = players + memchr::memmem::find(&data[players..], &encoded)?;
+    let field = name
+        .checked_add(encoded.len())?
+        .checked_add(TREASURY_OFFSET)?;
+    (field.checked_add(4)? <= data.len()).then_some(field)
+}
+
+/// Read an empire's treasury in AU, or `None` when its `PLAYERSV` record
+/// cannot be located.
+///
+/// Negative values are real: the game's unpatched finance-wraparound bug
+/// stores them when a treasury overflows `i32::MAX`.
+#[must_use]
+pub fn treasury(data: &[u8], empire: &Empire) -> Option<i32> {
+    let at = treasury_field(data, empire)?;
+    Some(i32::from_be_bytes([
+        data[at],
+        data[at + 1],
+        data[at + 2],
+        data[at + 3],
+    ]))
+}
+
+/// Write an empire's treasury in AU.
+///
+/// # Errors
+///
+/// [`Error::EmpireRecordNotFound`] when the empire's `PLAYERSV` record
+/// cannot be located.
+pub fn set_treasury(data: &mut [u8], empire: &Empire, au: i32) -> crate::Result<()> {
+    let Some(at) = treasury_field(data, empire) else {
+        return Err(crate::Error::EmpireRecordNotFound {
+            name: empire.name.clone(),
+        });
+    };
+    data[at..at + 4].copy_from_slice(&au.to_be_bytes());
+    Ok(())
 }
 
 /// Try to read a sorted `(system_index, 0x01)` pair list at `pos`.

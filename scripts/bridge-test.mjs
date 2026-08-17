@@ -47,6 +47,19 @@ try {
 assert(threw, "unknown species rejected");
 
 assert(summary.turn === 115, "turn 115 in fixture");
+const player = summary.empires.find((e) => e.id === 1);
+assert(player?.au === 64573, "player treasury 64573 at turn 115");
+assert(summary.empires.every((e) => Number.isInteger(e.au)), "all treasuries readable");
+
+const richEdited = apply_field_edits(save, JSON.stringify({ treasuries: [{ id: 1, au: 999999 }] }));
+const richAfter = JSON.parse(summarize(Buffer.from(richEdited)));
+assert(richAfter.empires.find((e) => e.id === 1)?.au === 999999, "treasury edit applied");
+assert(
+  richAfter.empires.filter((e) => e.id !== 1).every(
+    (e) => e.au === summary.empires.find((o) => o.id === e.id)?.au,
+  ),
+  "other treasuries untouched",
+);
 
 const planets = JSON.parse(planet_regions(save, "alrisha i"));
 assert(planets.length >= 4, "Alrisha I..IV match");
