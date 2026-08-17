@@ -1,159 +1,104 @@
-# MOO3 Save Editor
+# moo3-save
 
-Save game editor for **Master of Orion 3**. Parses the binary save format and lets you scan and replace species populations on any planet.
+**Use it here: <https://iteratrix.github.io/moo3-save-editor/>**
 
-Built to solve the Ithkul problem (Harvesters eating your population), but works as a general-purpose species replacement tool.
+Save editor for [Master of Orion 3](https://store.steampowered.com/app/1148100/Master_of_Orion_3/)
+(Quicksilver, 2003). Scan your galaxy's species populations and replace any
+species with any other — per planet, per scope, or galaxy-wide — directly in
+your browser. Nothing is uploaded anywhere; all parsing runs locally as
+WebAssembly.
 
-## Features
+The format was reverse-engineered from Bhruic's long-dead MOO3 Save Editor
+and the game binary, and is verified against real saves by a roundtrip
+battery.
 
-- **Scan** your galaxy for any species' populations
-- **Replace** one species with another on specific planets or galaxy-wide
-- **Auto-detects** save folder on Linux, Windows, and macOS
-- **Interactive species picker** or command-line flags
-- **Dry run** mode to preview changes
-- Creates `.bak` backups before any modification
-- No dependencies beyond Python 3.10+
+## The Ithkul problem
 
-## Quick Start
+Ithkul are MOO3's Harvester species: when they share a planet with anyone
+else, they bioharvest (eat) the other populations. This is hardcoded — no
+diplomacy, game setting, or targeted action removes them once they arrive
+via FLU Generator specials, conquest, or migration.
 
-```bash
-# Scan for all species populations
-python3 moo3_species.py
+The editor's defaults target exactly this: find Ithkul on planets shared
+with other species and turn them into someone harmless.
 
-# Replace Ithkul with Klackons on shared planets (the classic use case)
-python3 moo3_replace.py
+## Using it
 
-# Replace Ithkul with Darloks on a specific planet
-python3 moo3_replace.py --replace-with darlok --planet "Alrisha VII"
+Open the web editor, drop your `.gam` file on it, pick target, replacement,
+and scope, preview, apply. On Chromium browsers the editor writes straight
+back to the file after a permission prompt; elsewhere it downloads the
+edited file for you to move back into the save folder.
 
-# Turn everyone on a planet into Humans
-python3 moo3_replace.py --target klackon --replace-with human --planet "Psi Tauri I"
-
-# Preview without changing anything
-python3 moo3_replace.py --dry-run
-```
-
-## Usage: `moo3_species.py`
-
-Scans a save file and reports all species populations, with emphasis on planets where Ithkul cohabit with (and are eating) other species.
-
-```bash
-python3 moo3_species.py                     # auto-detect latest save
-python3 moo3_species.py path/to/save.gam    # specific save file
-```
-
-## Usage: `moo3_replace.py`
-
-Replaces one species with another. Creates a `.bak` backup before patching.
-
-```bash
-# Replace Ithkul (default target) with interactive species picker
-python3 moo3_replace.py
-
-# Target a specific species to replace
-python3 moo3_replace.py --target klackon --replace-with human
-
-# Only replace on specific planets
-python3 moo3_replace.py --planet "Alrisha VII"
-python3 moo3_replace.py --planet "Alrisha VII" --planet "Phelot II"
-python3 moo3_replace.py --planet "Alrisha"          # partial match: all planets in system
-
-# Only replace where a specific species is at risk
-python3 moo3_replace.py --protect klackon            # only on planets with Klackons
-
-# Replace ALL instances galaxy-wide
-python3 moo3_replace.py --target ithkul --replace-with darlok --all
-
-# Only replace on YOUR systems (auto-detects player ownership from save)
-python3 moo3_replace.py --mine --all --replace-with klackon
-
-# Preview changes without modifying
-python3 moo3_replace.py --dry-run
-
-# Specify a save file
-python3 moo3_replace.py path/to/save.gam
-```
-
-### Flags
-
-| Flag | Description |
-|------|-------------|
-| `--target <species>` | Species to replace (default: Ithkul) |
-| `--replace-with <species>` | Species to replace with (interactive if omitted) |
-| `--planet "<name>"` | Only affect this planet (repeatable, partial match) |
-| `--protect <species>` | Only affect planets where this species is present |
-| `--all` | Replace target species galaxy-wide |
-| `--mine` | Only affect systems owned by the player |
-| `--dry-run` | Preview changes without modifying the save |
-
-### Windows
-
-1. Install [Python 3.10+](https://www.python.org/downloads/) (check "Add to PATH" during install)
-2. Download/clone this repo
-3. Double-click `moo3_replace.py` or run `python moo3_replace.py` in a terminal
-
-The tool auto-detects your Steam save folder and keeps the window open on Windows.
-
-## Save File Locations
-
-The tools auto-detect saves in common locations:
+Save locations (autosaves in `AutoSaveHistory/` inside each):
 
 | Platform | Path |
-|----------|------|
-| Linux (Steam) | `~/.steam/steam/steamapps/common/Master of Orion 3/SaveGameFiles/` |
+|---|---|
 | Windows (Steam) | `C:\Program Files (x86)\Steam\steamapps\common\Master of Orion 3\SaveGameFiles\` |
+| Linux (Steam) | `~/.steam/steam/steamapps/common/Master of Orion 3/SaveGameFiles/` |
 | macOS (Steam) | `~/Library/Application Support/Steam/steamapps/common/Master of Orion 3/SaveGameFiles/` |
 
-AutoSave files are in the `AutoSaveHistory/` subdirectory.
+Close the game before editing and keep the backup the page offers.
 
-## The Ithkul Problem
+## What it can edit
 
-Ithkul are the Harvester species in MOO3. When they share a planet with other species, they **bioharvest (eat) the other populations**. This is hardcoded and cannot be turned off through diplomacy or game settings.
+- **Any species into any other**, with the sub-race reset so the game
+  rebuilds it from defaults. Population sizes, buildings, and everything
+  else stay untouched.
+- **Scopes**: shared planets only (the anti-Ithkul default, optionally only
+  where a specific species needs protecting), named planets (partial match —
+  `Alrisha` covers the whole system), or galaxy-wide.
+- **Your systems only**: player ownership is auto-detected from the save.
 
-Ithkul appear on your planets via FLU Generator planetary specials, conquest, or migration. Once present, they'll consume your population with no in-game way to remove them selectively.
+## CLI
 
-The default behavior of `moo3_replace.py` (no flags) targets exactly this: find Ithkul on planets shared with other species and replace them.
+The same core ships as a command-line tool:
 
-## Species IDs
+```
+cargo run -p moo3-save-cli --release -- scan                # report, newest save auto-detected
+cargo run -p moo3-save-cli --release -- replace --dry-run   # preview the default Ithkul purge
+cargo run -p moo3-save-cli --release -- replace --target klackon --replace-with human --planet "Psi Tauri I"
+cargo run -p moo3-save-cli --release -- replace --mine --all --replace-with darlok
+cargo run -p moo3-save-cli --release -- corpus <dir>        # verification battery over a save folder
+```
 
-From `racemodifiers.txt` in the game data:
+`replace` creates a `.bak` backup before writing.
 
-| race1 | Species | Type |
-|-------|---------|------|
-| 0 | Human | Humanoid (Human, Evon, Psilon) |
-| 1 | Imsaeis | Etherean (Imsaeis, Eoladi) |
-| 2 | Silicoid | Lithic (immune to bioharvesting) |
-| 3 | Meklar | Cybernetic (Meklar, Cynoid) |
-| 4 | Trilarian | Ichthytosian (Trilarian, Nommo) |
-| 5 | **Ithkul** | **Harvester - eats other populations** |
-| 6 | Klackon | Insecta (Klackon, Tachidi) |
-| 7 | Sakkra | Saurian (Sakkra, Raas, Grendarl) |
-| 8 | Darlok | Metashifter (Shapeshifter) |
-| 9 | NonCorporeal | Non-corporeal beings |
-| 10 | Protoplasmic | Protoplasmic |
-| 11 | Plant | Plant species |
-| 12 | Fungal | Fungal species |
-| 13 | Avian | Avian (includes Alkari) |
-| 14 | Gargantua | Giant species |
-| 15 | Bulrathi | Ursoid |
-| 16 | Mrrshan | Feline |
-| 17 | Elerian | Telepathic humanoid |
-| 18 | Gnolam | Trader species |
-| 19 | Elder | Elder Civilization |
-| 20 | ComBot | Combat robots |
+## Format notes (for the curious)
 
-## How It Works
+A `.gam` save is one big-endian binary blob: UTF-16BE strings, a custom
+8-byte fixed-point number (6-byte signed integer + 1/65536 fraction), and
+section markers stored as reversed ASCII — `VS3RDAEH` is "HEADERS3V",
+`VSYXALAG` is "GALAXYSV". There are no checksums and almost no
+self-describing lengths, so the parser walks every system, planet, and
+population region structurally; a single mis-skip desyncs everything after
+it, which is what the verify battery exists to catch.
 
-MOO3 saves are binary files with big-endian integers, UTF-16BE strings, and a custom fixed-point number format. The format was reverse-engineered from [Bhruic's MOO3 Save Editor](https://web.archive.org/web/2004/http://bhruic.mine.nu/) and the game binary.
+Module docs in `moo3-save-core` carry the details:
 
-Each planet has regions, and each region has a population with a species type (`race1`) and sub-race/magnate (`race2`). The replacement tool changes `race1` at region_offset+10 and sets `race2` to 0 at region_offset+11.
+- `galaxy`: systems, orbit slots, population regions, and the two-byte
+  `race1`/`race2` edit surface
+- `species`: the `race1` species table from the game data
+- `empire`: the empire table and the ownership-list heuristic behind `--mine`
+- `replace`: plan/apply split and the stale-plan guard
+- `verify`: parse, edit, re-parse, assert-nothing-else-changed
 
-### Key format details
+## Development
 
-- Header magic: `VS3RDAEH` / Galaxy marker: `VSYXALAG`
-- Custom doubles: 6-byte BE signed integer + 2-byte BE uint16 fraction
-- Planet slot types: `H` (0x48) = 31 extra bytes, `L`/`O` = 30 extra bytes, `0xFF` = empty orbit
-- Special record tags stored reversed (e.g., `SpFLUGen` stored as `neGULFpS`)
+```
+cargo test                              # unit + fixture tests
+MOO3_CORPUS_DIR=<your saves dir> cargo test    # full corpus verification
+cargo run -p moo3-save-cli -- corpus <dir>     # same checks, readable report
+wasm-pack build moo3-save-web --target web --out-dir ../web/pkg
+python3 -m http.server -d web           # dev server; SW skipped on localhost
+```
+
+`test-data/` contains one gzipped fixture save. The verification battery
+(`moo3-save-core/src/verify.rs`) parses, edits, and re-parses every save it
+is given and asserts nothing else changed; `scripts/bridge-test.mjs`
+exercises the WASM boundary in Node.
+
+Not affiliated with Quicksilver Software, Infogrames, or Atari. Back up
+your saves; use at your own risk.
 
 ## License
 

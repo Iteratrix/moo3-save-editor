@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>moo3-save</title>
+<meta name="description" content="Master of Orion 3 save editor: scan and replace species populations. Runs entirely in your browser - nothing is uploaded anywhere.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>moo3-save</h1>
+    <p class="tagline">Master of Orion 3 save editor &mdash; purge Ithkul, or replace any
+    species with any other. Everything runs locally in your browser; your save never
+    leaves your machine.</p>
+    <p class="tagline" id="fs-hint"></p>
+  </header>
+
+  <section id="drop-zone" class="drop-zone" tabindex="0" role="button"
+           aria-label="Open a save file">
+    <p><strong>Drop a .gam save here</strong> or click to browse</p>
+  </section>
+
+  <p id="status" role="status"></p>
+
+  <section id="editor" hidden>
+    <div class="file-header">
+      <div>
+        <h2 id="file-name"></h2>
+        <p class="muted" id="file-meta"></p>
+      </div>
+      <button type="button" id="backup-btn">Download backup</button>
+    </div>
+
+    <h3>Species in this galaxy</h3>
+    <table id="species-table">
+      <thead>
+        <tr><th>Species</th><th class="num">Population</th><th class="num">Regions</th><th class="num">Systems</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <h3>Replace a species</h3>
+    <div class="form-grid">
+      <label for="target">Replace</label>
+      <select id="target"></select>
+
+      <label for="replacement">with</label>
+      <select id="replacement"></select>
+
+      <span>where</span>
+      <div class="scope">
+        <label><input type="radio" name="scope" value="shared" checked>
+          they share a planet with
+          <select id="protect"><option value="">anyone</option></select></label>
+        <label><input type="radio" name="scope" value="planets">
+          the planet name contains
+          <input type="text" id="planets" placeholder="Alrisha VII, Phelot" size="24"></label>
+        <label><input type="radio" name="scope" value="everywhere">
+          anywhere in the galaxy</label>
+        <label id="mine-row"><input type="checkbox" id="mine">
+          your systems only</label>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="button" id="preview-btn">Preview</button>
+      <button type="button" id="save-btn" disabled></button>
+    </div>
+
+    <div id="plan-result" hidden>
+      <p id="plan-summary"></p>
+      <ul id="plan-list"></ul>
+    </div>
+  </section>
+
+  <footer>
+    <p>Ithkul are MOO3's Harvester species: they bioharvest (eat) every population
+    sharing a planet with them, and the game gives you no way to remove them.
+    The default settings above target exactly that.</p>
+    <p>Saves live in <code>steamapps/common/Master of Orion 3/SaveGameFiles/</code>
+    (autosaves in <code>AutoSaveHistory/</code>). Close the game before editing and
+    keep the backup.</p>
+    <p><a href="https://github.com/Iteratrix/moo3-save-editor">Source on GitHub</a>.
+    Not affiliated with Quicksilver Software or Atari. Use at your own risk.</p>
+  </footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

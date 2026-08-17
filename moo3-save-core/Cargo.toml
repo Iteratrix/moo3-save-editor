@@ -1,0 +1,18 @@
+[package]
+name = "moo3-save-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+az = "1"
+memchr = "2"
+thiserror = "2"
+
+[dev-dependencies]
+flate2 = "1"
+proptest = "1"
+
+[lints]
+workspace = true
