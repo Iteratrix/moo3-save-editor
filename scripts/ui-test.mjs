@@ -47,18 +47,29 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((resolve) => server.listen(PORT, resolve));
 
-const browserBin = ["chromium", "chromium-browser", "google-chrome"].find((bin) => {
+// CHROME_BIN first, then Chrome before the chromium-browser name: on
+// GitHub runners `chromium-browser` is a broken snap shim while
+// `google-chrome` is a real install.
+const candidates = [
+  process.env.CHROME_BIN,
+  "google-chrome",
+  "google-chrome-stable",
+  "chromium",
+  "chromium-browser",
+].filter(Boolean);
+const browserBin = candidates.find((bin) => {
   try {
-    execSync(`command -v ${bin}`, { stdio: "ignore" });
+    execSync(`command -v ${JSON.stringify(bin)}`, { stdio: "ignore" });
     return true;
   } catch {
     return false;
   }
 });
 if (!browserBin) {
-  console.error("no chromium/chrome on PATH");
+  console.error("no chromium/chrome on PATH (set CHROME_BIN)");
   process.exit(1);
 }
+console.log(`browser: ${browserBin}`);
 const profile = fs.mkdtempSync("/tmp/moo3-ui-test-");
 const browser = spawn(
   browserBin,
@@ -72,6 +83,11 @@ const browser = spawn(
   ],
   { stdio: "ignore" },
 );
+browser.on("error", (error) => {
+  console.error(`browser failed to start: ${error}`);
+  server.close();
+  process.exit(1);
+});
 
 function cleanup(code) {
   browser.kill();
