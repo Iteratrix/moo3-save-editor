@@ -1,5 +1,9 @@
 import init, { summarize, plan_replace, apply_replace } from "./pkg/moo3_save_web.js";
 
+// Start loading the WASM immediately; loadFile awaits this so a file
+// dropped before the module finishes initializing still works.
+const ready = init();
+
 const el = (id) => document.getElementById(id);
 const dropZone = el("drop-zone");
 const editor = el("editor");
@@ -150,6 +154,7 @@ async function save() {
 }
 
 async function loadFile(file, handle) {
+  await ready;
   const bytes = new Uint8Array(await file.arrayBuffer());
   let summary;
   try {
@@ -201,7 +206,10 @@ dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag"));
 dropZone.addEventListener("drop", async (event) => {
   event.preventDefault();
   dropZone.classList.remove("drag");
+  // Capture both synchronously: the drag data store is neutered once the
+  // handler yields, so anything read after an await comes back empty.
   const item = event.dataTransfer?.items?.[0];
+  const file = event.dataTransfer?.files?.[0];
   if (hasFsAccess && item?.getAsFileSystemHandle) {
     try {
       const handle = await item.getAsFileSystemHandle();
@@ -213,7 +221,6 @@ dropZone.addEventListener("drop", async (event) => {
       // Synthetic drops have no backing handle; fall through to File.
     }
   }
-  const file = event.dataTransfer?.files?.[0];
   if (file) void loadFile(file);
 });
 
@@ -241,5 +248,5 @@ function registerServiceWorker() {
   }
 }
 
-await init();
+await ready;
 registerServiceWorker();
