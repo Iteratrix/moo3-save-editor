@@ -28,6 +28,23 @@ pub enum Error {
     /// records, and continuing would misattribute every later offset.
     #[error("implausible system name length {len} at offset {offset:#X}")]
     BadSystemName { offset: usize, len: u32 },
+
+    /// The file's header magic `VS3RDAEH` is missing, so header fields
+    /// (like the turn counter) cannot be located.
+    #[error("header magic VS3RDAEH not found (not a MOO3 save?)")]
+    NoHeaderMagic,
+
+    /// The bytes at a region's offset no longer match the parsed record —
+    /// the plan is stale or belongs to a different file. Refusing to write
+    /// prevents corrupting unrelated bytes.
+    #[error(
+        "region at offset {offset:#X} does not match the parsed record (stale plan or wrong file)"
+    )]
+    StaleRegion { offset: usize },
+
+    /// A value cannot be represented in the save's wire format.
+    #[error("{what} {value} does not fit the save format's range")]
+    ValueOutOfRange { what: &'static str, value: f64 },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

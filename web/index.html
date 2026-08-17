@@ -29,6 +29,8 @@
       <div>
         <h2 id="file-name"></h2>
         <p class="muted" id="file-meta"></p>
+        <label class="muted" id="turn-row">Turn
+          <input type="number" id="turn-input" min="0" max="4294967295"></label>
       </div>
       <button type="button" id="backup-btn">Download backup</button>
     </div>
@@ -72,6 +74,19 @@
     <div id="plan-result" hidden>
       <p id="plan-summary"></p>
       <ul id="plan-list"></ul>
+    </div>
+
+    <h3>Planet inspector</h3>
+    <div class="inspector">
+      <div class="search-row">
+        <input type="text" id="planet-query" placeholder="Planet or system name, e.g. Alrisha">
+        <button type="button" id="planet-search-btn">Search</button>
+      </div>
+      <div id="planet-results"></div>
+    </div>
+
+    <div class="actions">
+      <button type="button" id="fields-save-btn" disabled></button>
     </div>
   </section>
 

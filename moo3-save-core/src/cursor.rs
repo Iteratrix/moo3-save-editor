@@ -5,7 +5,7 @@
 //! rely on this: they skip fixed-size runs without validating content, and
 //! the cursor is what keeps that safe.
 
-use az::Az as _;
+use az::{Az as _, SaturatingAs as _};
 
 use crate::error::{Error, Result};
 
@@ -61,6 +61,11 @@ impl<'a> Cursor<'a> {
         Ok(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
     }
 
+    pub fn i32be(&mut self) -> Result<i32> {
+        let bytes = self.take(4)?;
+        Ok(i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    }
+
     /// MOO3's custom fixed-point number: a 6-byte big-endian signed integer
     /// part followed by a 2-byte big-endian 1/65536 fraction.
     pub fn fixed(&mut self) -> Result<f64> {
@@ -93,9 +98,49 @@ impl<'a> Cursor<'a> {
     }
 }
 
+/// Encode a value into MOO3's 8-byte fixed-point wire format.
+///
+/// Returns `None` when the integer part does not fit the 6-byte signed
+/// range (`|v| >= 2^47`).
+pub(crate) fn encode_fixed(value: f64) -> Option<[u8; 8]> {
+    const LIMIT: f64 = 140_737_488_355_328.0; // 2^47
+    if !value.is_finite() || value <= -LIMIT || value >= LIMIT {
+        return None;
+    }
+    let int_part = value.floor().az::<i64>();
+    let frac = ((value - value.floor()) * 65536.0).saturating_as::<u16>();
+    let int_bytes = int_part.to_be_bytes();
+    let frac_bytes = frac.to_be_bytes();
+    Some([
+        int_bytes[2],
+        int_bytes[3],
+        int_bytes[4],
+        int_bytes[5],
+        int_bytes[6],
+        int_bytes[7],
+        frac_bytes[0],
+        frac_bytes[1],
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encode_decode_roundtrip() {
+        for value in [0.0, 1.5, -1.5, 123.4375, 140_000.0, 7077.0] {
+            let bytes = encode_fixed(value).expect("in range");
+            let mut cursor = Cursor::new(&bytes, 0);
+            let decoded = cursor.fixed().expect("8 bytes");
+            assert!(
+                (decoded - value).abs() < 1.0 / 65536.0,
+                "{value} -> {decoded}"
+            );
+        }
+        assert!(encode_fixed(1e30).is_none());
+        assert!(encode_fixed(f64::NAN).is_none());
+    }
 
     #[test]
     fn fixed_point_decodes_sign_and_fraction() {

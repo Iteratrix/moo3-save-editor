@@ -126,6 +126,41 @@ button:disabled { opacity: 0.5; cursor: default; }
   margin-top: 1rem;
 }
 
+.inspector {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.search-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.search-row input { flex: 1; }
+
+#planet-results h4 {
+  margin: 1rem 0 0.35rem;
+}
+
+.region-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.15rem 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.region-row input { width: 7.5rem; }
+.region-row.changed input {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+#turn-row input { width: 6rem; }
+
 #plan-result {
   margin-top: 1rem;
   background: var(--panel);

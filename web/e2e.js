@@ -23,15 +23,32 @@ try {
   const plan = document.getElementById("plan-summary").textContent;
   const planned = document.querySelectorAll("#plan-list li").length;
 
+  const turnValue = document.getElementById("turn-input").value;
+
+  document.getElementById("planet-query").value = "Alrisha I";
+  document.getElementById("planet-search-btn").click();
+  for (let i = 0; i < 50 && !document.querySelector(".region-row"); i++) await wait(100);
+  const regionRows = document.querySelectorAll(".region-row").length;
+  const firstPop = document.querySelector(".region-row input");
+  let fieldsEnabled = false;
+  if (firstPop) {
+    firstPop.value = "9.9";
+    firstPop.dispatchEvent(new Event("input"));
+    fieldsEnabled = !document.getElementById("fields-save-btn").disabled;
+  }
+
   const ok =
     rows > 0 &&
     meta.includes("250 systems") &&
     meta.includes("2794 populated regions") &&
     plan.includes("would become Klackon") &&
-    planned > 0;
+    planned > 0 &&
+    turnValue === "115" &&
+    regionRows > 0 &&
+    fieldsEnabled;
   document.title = ok
-    ? `E2E PASS: ${rows} species; ${meta}; ${planned} planned; ${plan}`
-    : `E2E FAIL: rows=${rows}; meta=${meta}; plan=${plan}; planned=${planned}; status=${document.getElementById("status").textContent}`;
+    ? `E2E PASS: ${rows} species; ${meta}; turn ${turnValue}; ${planned} planned; ${regionRows} region rows editable`
+    : `E2E FAIL: rows=${rows}; meta=${meta}; plan=${plan}; planned=${planned}; turn=${turnValue}; regionRows=${regionRows}; fieldsEnabled=${fieldsEnabled}; status=${document.getElementById("status").textContent}`;
 } catch (error) {
   document.title = `E2E FAIL: ${error}`;
 }

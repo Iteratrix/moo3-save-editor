@@ -5,7 +5,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 
 const require = createRequire(import.meta.url);
-const { summarize, plan_replace, apply_replace } =
+const { summarize, plan_replace, apply_replace, planet_regions, apply_field_edits } =
   require("../target/wasm-node-test/moo3_save_web.js");
 
 function assert(condition, message) {
@@ -45,6 +45,32 @@ try {
   threw = true;
 }
 assert(threw, "unknown species rejected");
+
+assert(summary.turn === 115, "turn 115 in fixture");
+
+const planets = JSON.parse(planet_regions(save, "alrisha i"));
+assert(planets.length >= 4, "Alrisha I..IV match");
+const region = planets[0].regions[0];
+assert(region.pop > 0 && region.offset > 0, "region carries pop and offset");
+assert(Number.isInteger(region.eco_base), "eco is an integer");
+
+const fieldEdited = apply_field_edits(
+  save,
+  JSON.stringify({ turn: 200, pops: [{ offset: region.offset, pop: 9.9 }] }),
+);
+const fieldAfter = JSON.parse(summarize(Buffer.from(fieldEdited)));
+assert(fieldAfter.turn === 200, "turn edit applied");
+const reRegion = JSON.parse(planet_regions(Buffer.from(fieldEdited), "alrisha i"))[0].regions[0];
+assert(Math.abs(reRegion.pop - 9.9) < 1e-3, "pop edit applied");
+assert(fieldAfter.regions === summary.regions, "region count stable after field edits");
+
+let fieldThrew = false;
+try {
+  apply_field_edits(save, JSON.stringify({ pops: [{ offset: 12345, pop: 1 }] }));
+} catch {
+  fieldThrew = true;
+}
+assert(fieldThrew, "unknown region offset rejected");
 
 const before = summary.species.find((s) => s.name === "Klackon")?.pop ?? 0;
 const edited = apply_replace(save, options({}));

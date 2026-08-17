@@ -8,7 +8,7 @@
 
 use crate::galaxy::Galaxy;
 use crate::replace::{self, ApplyOutcome, Scope};
-use crate::{empire, Error, Species};
+use crate::{edit, empire, header, Error, Species};
 
 /// Result of verifying one file.
 #[derive(Debug)]
@@ -82,6 +82,52 @@ fn check_edit(bytes: &[u8], galaxy: &Galaxy) -> Result<String, String> {
     ))
 }
 
+fn check_field_edits(bytes: &[u8], galaxy: &Galaxy) -> Result<String, String> {
+    let turn = header::turn(bytes).map_err(|error| format!("turn read: {error}"))?;
+    let mut edited = bytes.to_vec();
+    header::set_turn(&mut edited, turn + 1).map_err(|error| format!("turn write: {error}"))?;
+    let reread_turn = header::turn(&edited).map_err(|error| format!("turn reread: {error}"))?;
+    if reread_turn != turn + 1 {
+        return Err(format!("turn edit did not stick: {turn} -> {reread_turn}"));
+    }
+
+    let Some(first) = galaxy.regions.first() else {
+        return Ok(format!("turn {turn} ok, pop edit skipped (no regions)"));
+    };
+    let target_pop = first.pop + 1.5;
+    edit::set_population(&mut edited, first, target_pop)
+        .map_err(|error| format!("pop write: {error}"))?;
+
+    let reparsed =
+        Galaxy::parse(&edited).map_err(|error| format!("reparse after field edits: {error}"))?;
+    if reparsed.regions.len() != galaxy.regions.len() {
+        return Err("region count changed across field edits".to_owned());
+    }
+    let Some(reread) = reparsed.regions.first() else {
+        return Err("first region vanished across field edits".to_owned());
+    };
+    if (reread.pop - target_pop).abs() >= 1.0 / 65536.0 {
+        return Err(format!(
+            "pop edit did not stick: wanted {target_pop}, got {}",
+            reread.pop
+        ));
+    }
+    let mut expected = first.clone();
+    expected.pop = reread.pop;
+    if *reread != expected {
+        return Err("pop edit disturbed sibling fields".to_owned());
+    }
+    for (before, after) in galaxy.regions.iter().zip(&reparsed.regions).skip(1) {
+        if before != after {
+            return Err(format!(
+                "region at {:#X} changed unexpectedly during field edits",
+                before.offset
+            ));
+        }
+    }
+    Ok(format!("turn {turn} ok, pop edit ok"))
+}
+
 /// Run the full check battery against raw save bytes.
 #[must_use]
 pub fn verify(bytes: &[u8]) -> Outcome {
@@ -101,9 +147,13 @@ pub fn verify(bytes: &[u8]) -> Outcome {
         Ok(edit) => edit,
         Err(reason) => return Outcome::Fail(reason),
     };
+    let fields = match check_field_edits(bytes, &galaxy) {
+        Ok(fields) => fields,
+        Err(reason) => return Outcome::Fail(reason),
+    };
 
     Outcome::Pass(format!(
-        "{} systems, {} populated regions, {} empires, {} owned systems, {edit}",
+        "{} systems, {} populated regions, {} empires, {} owned systems, {edit}, {fields}",
         galaxy.systems.len(),
         galaxy.regions.len(),
         empires.len(),

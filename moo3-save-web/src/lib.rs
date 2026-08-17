@@ -13,9 +13,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
-use moo3_save_core::galaxy::Galaxy;
+use moo3_save_core::galaxy::{Galaxy, Region};
 use moo3_save_core::replace::{self, ApplyOutcome, Scope};
-use moo3_save_core::{empire, species, Species};
+use moo3_save_core::{edit, empire, header, species, Species};
 
 #[derive(Serialize)]
 struct EmpireJson {
@@ -34,6 +34,7 @@ struct SpeciesTotal {
 
 #[derive(Serialize)]
 struct SummaryJson {
+    turn: Option<u32>,
     systems: usize,
     regions: usize,
     player_systems: usize,
@@ -81,6 +82,7 @@ pub fn summarize(bytes: &[u8]) -> Result<String, JsError> {
     totals.sort_by(|a, b| b.pop.total_cmp(&a.pop));
 
     let summary = SummaryJson {
+        turn: header::turn(bytes).ok(),
         systems: galaxy.systems.len(),
         regions: galaxy.regions.len(),
         player_systems: owned.len(),
@@ -223,6 +225,124 @@ pub fn plan_replace(bytes: &[u8], options: &str) -> Result<String, JsError> {
         regions,
     };
     Ok(serde_json::to_string(&plan).expect("plan serializes"))
+}
+
+#[derive(Serialize)]
+struct RegionJson {
+    offset: usize,
+    region: usize,
+    owner: u8,
+    species: String,
+    pop: f64,
+    terrain: u8,
+    eco_base: i32,
+    eco_modified: i32,
+}
+
+#[derive(Serialize)]
+struct PlanetJson {
+    name: String,
+    regions: Vec<RegionJson>,
+}
+
+/// List the populated regions of every planet whose name contains `query`
+/// (case-insensitive).
+///
+/// # Errors
+///
+/// When the bytes are not a parseable MOO3 save.
+///
+/// # Panics
+///
+/// Only if JSON serialization fails, which cannot happen for these types.
+#[wasm_bindgen]
+pub fn planet_regions(bytes: &[u8], query: &str) -> Result<String, JsError> {
+    let galaxy = parse_galaxy(bytes)?;
+    let query = query.to_lowercase();
+
+    let mut planets: BTreeMap<(usize, usize), PlanetJson> = BTreeMap::new();
+    for region in &galaxy.regions {
+        let name = galaxy.planet_name(region);
+        if !name.to_lowercase().contains(&query) {
+            continue;
+        }
+        let Region {
+            sys_idx,
+            planet_idx,
+            region_idx,
+            owner,
+            species,
+            pop,
+            terrain,
+            eco_base,
+            eco_modified,
+            offset,
+            race2: _,
+        } = region.clone();
+        planets
+            .entry((sys_idx, planet_idx))
+            .or_insert_with(|| PlanetJson {
+                name,
+                regions: Vec::new(),
+            })
+            .regions
+            .push(RegionJson {
+                offset,
+                region: region_idx,
+                owner,
+                species: species.to_string(),
+                pop,
+                terrain,
+                eco_base,
+                eco_modified,
+            });
+    }
+    let planets: Vec<PlanetJson> = planets.into_values().collect();
+    Ok(serde_json::to_string(&planets).expect("planets serialize"))
+}
+
+#[derive(Deserialize)]
+struct PopEdit {
+    offset: usize,
+    pop: f64,
+}
+
+#[derive(Deserialize)]
+struct FieldEdits {
+    #[serde(default)]
+    turn: Option<u32>,
+    #[serde(default)]
+    pops: Vec<PopEdit>,
+}
+
+/// Apply field edits (turn counter, region populations) and return the
+/// patched save bytes. Population edits address regions by the `offset`
+/// values from [`planet_regions`], which must come from the same bytes.
+///
+/// # Errors
+///
+/// On unparseable saves, malformed edit JSON, unknown region offsets, or
+/// out-of-range values.
+#[wasm_bindgen]
+pub fn apply_field_edits(bytes: &[u8], edits: &str) -> Result<Vec<u8>, JsError> {
+    let FieldEdits { turn, pops } =
+        serde_json::from_str(edits).map_err(|error| JsError::new(&error.to_string()))?;
+    let galaxy = parse_galaxy(bytes)?;
+
+    let mut edited = bytes.to_vec();
+    if let Some(turn) = turn {
+        header::set_turn(&mut edited, turn).map_err(|error| JsError::new(&error.to_string()))?;
+    }
+    for PopEdit { offset, pop } in pops {
+        let Some(region) = galaxy.regions.iter().find(|region| region.offset == offset) else {
+            return Err(JsError::new(&format!(
+                "no populated region at offset {offset}"
+            )));
+        };
+        edit::set_population(&mut edited, region, pop)
+            .map_err(|error| JsError::new(&error.to_string()))?;
+    }
+    Ok(edited)
 }
 
 /// Apply a replacement and return the patched save bytes.

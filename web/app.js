@@ -1,4 +1,6 @@
-import init, { summarize, plan_replace, apply_replace } from "./pkg/moo3_save_web.js";
+import init, {
+  summarize, plan_replace, apply_replace, planet_regions, apply_field_edits,
+} from "./pkg/moo3_save_web.js";
 
 // Start loading the WASM immediately; loadFile awaits this so a file
 // dropped before the module finishes initializing still works.
@@ -77,7 +79,85 @@ function render() {
   el("plan-result").hidden = true;
   el("save-btn").textContent = state.handle ? "Apply & save to file" : "Apply & download";
   el("save-btn").disabled = false;
+
+  el("turn-row").hidden = summary.turn === null;
+  el("turn-input").value = summary.turn ?? "";
+  el("planet-results").replaceChildren();
+  const saveLabel = state.handle ? "Save edits to file" : "Download edited save";
+  el("fields-save-btn").textContent = saveLabel;
+  updateFieldsSave();
+  if (el("planet-query").value.trim()) renderPlanetSearch();
+
   editor.hidden = false;
+}
+
+function turnEdit() {
+  const turn = Number.parseInt(el("turn-input").value, 10);
+  if (!Number.isFinite(turn) || turn < 0 || turn === state.summary.turn) return null;
+  return turn;
+}
+
+function updateFieldsSave() {
+  el("fields-save-btn").disabled = state.popEdits.size === 0 && turnEdit() === null;
+}
+
+function renderPlanetSearch() {
+  const query = el("planet-query").value.trim();
+  const results = el("planet-results");
+  results.replaceChildren();
+  state.popEdits.clear();
+  updateFieldsSave();
+  if (!query) return;
+
+  let planets;
+  try {
+    planets = JSON.parse(planet_regions(state.originalBytes, query));
+  } catch (error) {
+    setStatus(`Search failed: ${error}`, "error");
+    return;
+  }
+  setStatus("");
+  if (planets.length === 0) {
+    const none = document.createElement("p");
+    none.className = "muted";
+    none.textContent = `No populated regions on planets matching "${query}".`;
+    results.append(none);
+    return;
+  }
+  for (const planet of planets.slice(0, 25)) {
+    const heading = document.createElement("h4");
+    heading.textContent = planet.name;
+    results.append(heading);
+    for (const region of planet.regions) {
+      const row = document.createElement("div");
+      row.className = "region-row";
+      const label = document.createElement("span");
+      label.textContent =
+        `R${region.region} ${region.species} · owner ${region.owner} · terrain ${region.terrain} · eco ${region.eco_base}/${region.eco_modified}`;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "0";
+      input.step = "0.25";
+      input.value = region.pop.toFixed(4);
+      input.addEventListener("input", () => {
+        const parsed = Number.parseFloat(input.value);
+        const changed = Number.isFinite(parsed) && parsed >= 0 &&
+          Math.abs(parsed - region.pop) > 1e-4;
+        row.classList.toggle("changed", changed);
+        if (changed) state.popEdits.set(region.offset, parsed);
+        else state.popEdits.delete(region.offset);
+        updateFieldsSave();
+      });
+      row.append(label, input);
+      results.append(row);
+    }
+  }
+  if (planets.length > 25) {
+    const more = document.createElement("p");
+    more.className = "muted";
+    more.textContent = `Showing 25 of ${planets.length} matching planets; narrow the search.`;
+    results.append(more);
+  }
 }
 
 function buildOptions() {
@@ -126,6 +206,24 @@ function download(bytes, name) {
   URL.revokeObjectURL(url);
 }
 
+async function persist(edited, what) {
+  if (state.handle) {
+    try {
+      const writable = await state.handle.createWritable();
+      await writable.write(edited);
+      await writable.close();
+      setStatus(`${what} and saved back to the original file. Keep the backup!`, "ok");
+    } catch (error) {
+      setStatus(`Could not write file (${error}); downloading instead.`, "error");
+      download(edited, state.fileName);
+    }
+  } else {
+    download(edited, state.fileName);
+    setStatus(`${what}. Replace the original file in your save folder (keep a backup).`, "ok");
+  }
+  await loadFile(new File([edited], state.fileName), state.handle);
+}
+
 async function save() {
   const plan = showPlan();
   if (!plan || plan.count === 0) return;
@@ -136,21 +234,25 @@ async function save() {
     setStatus(`Edit failed: ${error}`, "error");
     return;
   }
-  if (state.handle) {
-    try {
-      const writable = await state.handle.createWritable();
-      await writable.write(edited);
-      await writable.close();
-      setStatus(`Converted ${plan.count} regions and saved back to the original file. Keep the backup!`, "ok");
-    } catch (error) {
-      setStatus(`Could not write file (${error}); downloading instead.`, "error");
-      download(edited, state.fileName);
-    }
-  } else {
-    download(edited, state.fileName);
-    setStatus(`Converted ${plan.count} regions. Replace the original file in your save folder (keep a backup).`, "ok");
+  await persist(edited, `Converted ${plan.count} regions`);
+}
+
+async function saveFields() {
+  const edits = {
+    turn: turnEdit(),
+    pops: [...state.popEdits].map(([offset, pop]) => ({ offset, pop })),
+  };
+  let edited;
+  try {
+    edited = apply_field_edits(state.originalBytes, JSON.stringify(edits));
+  } catch (error) {
+    setStatus(`Edit failed: ${error}`, "error");
+    return;
   }
-  await loadFile(new File([edited], state.fileName), state.handle);
+  const parts = [];
+  if (edits.turn !== null) parts.push(`turn -> ${edits.turn}`);
+  if (edits.pops.length > 0) parts.push(`${edits.pops.length} population edits`);
+  await persist(edited, `Applied ${parts.join(" and ")}`);
 }
 
 async function loadFile(file, handle) {
@@ -168,6 +270,7 @@ async function loadFile(file, handle) {
     originalBytes: bytes,
     handle: handle ?? null,
     summary,
+    popEdits: new Map(),
   };
   setStatus("");
   render();
@@ -229,6 +332,12 @@ el("backup-btn").addEventListener("click", () => {
 });
 el("preview-btn").addEventListener("click", () => void showPlan());
 el("save-btn").addEventListener("click", () => void save());
+el("fields-save-btn").addEventListener("click", () => void saveFields());
+el("turn-input").addEventListener("input", updateFieldsSave);
+el("planet-search-btn").addEventListener("click", renderPlanetSearch);
+el("planet-query").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") renderPlanetSearch();
+});
 for (const radio of document.querySelectorAll("input[name=scope]")) {
   radio.addEventListener("change", () => {
     el("plan-result").hidden = true;

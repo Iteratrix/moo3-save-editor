@@ -14,7 +14,7 @@ use anyhow::{bail, Context as _};
 
 use moo3_save_core::galaxy::{Galaxy, Region};
 use moo3_save_core::replace::{self, ApplyOutcome, Scope};
-use moo3_save_core::{empire, species, verify, Species};
+use moo3_save_core::{edit, empire, header, species, verify, Species};
 
 fn usage() -> ! {
     eprintln!(
@@ -30,6 +30,17 @@ fn usage() -> ! {
         --all                     replace galaxy-wide
         --mine                    only systems owned by the player
         --dry-run                 preview without modifying
+  moo3-save planet \"<name>\" [file.gam]
+      inspect a planet's regions (partial name match)
+  moo3-save edit [file.gam] --planet \"<name>\" --region <n> [options]
+      edit one region (creates a .bak backup)
+        --pop <x>        set population
+        --owner <id>     set owning empire id
+        --terrain <n>    set terrain index
+        --eco <n>        set base ecosystem (-2..=2 in practice)
+        --dry-run        preview without modifying
+  moo3-save turn [file.gam] [--set <n>]
+      show or set the turn counter (creates a .bak backup)
   moo3-save corpus <dir>
       run the verification battery on every .gam in <dir>
 
@@ -60,6 +71,9 @@ fn main() -> anyhow::Result<()> {
     match command.as_str() {
         "scan" => scan(rest),
         "replace" => replace_command(rest),
+        "planet" => planet_command(rest),
+        "edit" => edit_command(rest),
+        "turn" => turn_command(rest),
         "corpus" => match rest {
             [dir] => corpus(Path::new(dir)),
             _ => usage(),
@@ -423,6 +437,226 @@ fn replace_command(args: &[String]) -> anyhow::Result<()> {
     }
     std::fs::write(&path, &bytes).with_context(|| format!("writing {}", path.display()))?;
     println!("\nDone! Converted {patched} {target} regions ({pop:.2} pop) to {replacement}.");
+    Ok(())
+}
+
+fn backup_and_write(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    let backup = path.with_extension("gam.bak");
+    println!("\nBacking up to {}", backup.display());
+    std::fs::copy(path, &backup).context("writing backup")?;
+    std::fs::write(path, bytes).with_context(|| format!("writing {}", path.display()))
+}
+
+fn region_row(region: &Region) {
+    println!(
+        "    R{}: owner={:<3} {:<12} race2={:<3} pop={:<10.4} terrain={:<3} eco={}/{}",
+        region.region_idx,
+        region.owner,
+        region.species.to_string(),
+        region.race2,
+        region.pop,
+        region.terrain,
+        region.eco_base,
+        region.eco_modified,
+    );
+}
+
+fn matching_planets<'galaxy>(
+    galaxy: &'galaxy Galaxy,
+    name: &str,
+) -> BTreeMap<PlanetKey, Vec<&'galaxy Region>> {
+    let name = name.to_lowercase();
+    by_planet(galaxy)
+        .into_iter()
+        .filter(|(_, regions)| {
+            galaxy
+                .planet_name(regions[0])
+                .to_lowercase()
+                .contains(&name)
+        })
+        .collect()
+}
+
+fn planet_command(args: &[String]) -> anyhow::Result<()> {
+    let mut positional = args.iter().filter(|arg| !arg.starts_with('-'));
+    let Some(name) = positional.next() else {
+        usage()
+    };
+    let path = resolve_save(positional.next().map(PathBuf::from))?;
+    let (_, galaxy) = load(&path)?;
+
+    let planets = matching_planets(&galaxy, name);
+    if planets.is_empty() {
+        bail!("no planet matching \"{name}\" has populated regions");
+    }
+    for regions in planets.values() {
+        println!("\n  {}:", galaxy.planet_name(regions[0]));
+        for region in regions {
+            region_row(region);
+        }
+    }
+    println!(
+        "\n{} planet(s) matched. Only populated regions are listed.",
+        planets.len()
+    );
+    Ok(())
+}
+
+struct EditArgs {
+    path: Option<PathBuf>,
+    planet: Option<String>,
+    region: Option<usize>,
+    pop: Option<f64>,
+    owner: Option<u8>,
+    terrain: Option<u8>,
+    eco: Option<i32>,
+    dry_run: bool,
+}
+
+fn parse_edit_args(args: &[String]) -> anyhow::Result<EditArgs> {
+    let mut parsed = EditArgs {
+        path: None,
+        planet: None,
+        region: None,
+        pop: None,
+        owner: None,
+        terrain: None,
+        eco: None,
+        dry_run: false,
+    };
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--planet" => parsed.planet = Some(next_value(&mut rest).clone()),
+            "--region" => parsed.region = Some(next_value(&mut rest).parse()?),
+            "--pop" => parsed.pop = Some(next_value(&mut rest).parse()?),
+            "--owner" => parsed.owner = Some(next_value(&mut rest).parse()?),
+            "--terrain" => parsed.terrain = Some(next_value(&mut rest).parse()?),
+            "--eco" => parsed.eco = Some(next_value(&mut rest).parse()?),
+            "--dry-run" => parsed.dry_run = true,
+            other if !other.starts_with('-') => parsed.path = Some(PathBuf::from(other)),
+            _ => usage(),
+        }
+    }
+    Ok(parsed)
+}
+
+fn edit_command(args: &[String]) -> anyhow::Result<()> {
+    let EditArgs {
+        path,
+        planet,
+        region,
+        pop,
+        owner,
+        terrain,
+        eco,
+        dry_run,
+    } = parse_edit_args(args)?;
+    let (Some(planet), Some(region_idx)) = (planet, region) else {
+        usage()
+    };
+    if pop.is_none() && owner.is_none() && terrain.is_none() && eco.is_none() {
+        bail!("nothing to edit: pass at least one of --pop, --owner, --terrain, --eco");
+    }
+
+    let path = resolve_save(path)?;
+    let (mut bytes, galaxy) = load(&path)?;
+
+    let mut planets = matching_planets(&galaxy, &planet);
+    if planets.len() > 1 {
+        let wanted = planet.to_lowercase();
+        let exact: BTreeMap<PlanetKey, Vec<&Region>> = planets
+            .iter()
+            .filter(|(_, regions)| galaxy.planet_name(regions[0]).to_lowercase() == wanted)
+            .map(|(key, regions)| (*key, regions.clone()))
+            .collect();
+        if exact.len() == 1 {
+            planets = exact;
+        } else {
+            for regions in planets.values() {
+                println!("  {}", galaxy.planet_name(regions[0]));
+            }
+            bail!(
+                "\"{planet}\" matches {} planets; be more specific",
+                planets.len()
+            );
+        }
+    }
+    let Some(regions) = planets.values().next() else {
+        bail!("no planet matching \"{planet}\" has populated regions");
+    };
+    let Some(target) = regions
+        .iter()
+        .find(|region| region.region_idx == region_idx)
+    else {
+        println!("Populated regions on {}:", galaxy.planet_name(regions[0]));
+        for region in regions {
+            region_row(region);
+        }
+        bail!("region {region_idx} is not a populated region of this planet");
+    };
+
+    println!("\nBefore:");
+    region_row(target);
+
+    if dry_run {
+        println!("\nDry run: no changes written.");
+        return Ok(());
+    }
+
+    if let Some(pop) = pop {
+        edit::set_population(&mut bytes, target, pop)?;
+    }
+    if let Some(owner) = owner {
+        edit::set_owner(&mut bytes, target, owner)?;
+    }
+    if let Some(terrain) = terrain {
+        edit::set_terrain(&mut bytes, target, terrain)?;
+    }
+    if let Some(eco) = eco {
+        edit::set_ecosystem(&mut bytes, target, eco)?;
+    }
+
+    let reparsed = Galaxy::parse(&bytes).context("re-parsing after edit")?;
+    let Some(after) = reparsed
+        .regions
+        .iter()
+        .find(|region| region.offset == target.offset)
+    else {
+        bail!("edited region no longer parses; aborting without writing");
+    };
+    println!("\nAfter:");
+    region_row(after);
+
+    backup_and_write(&path, &bytes)?;
+    println!("\nDone.");
+    Ok(())
+}
+
+fn turn_command(args: &[String]) -> anyhow::Result<()> {
+    let mut path = None;
+    let mut set: Option<u32> = None;
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "--set" => set = Some(next_value(&mut rest).parse()?),
+            other if !other.starts_with('-') => path = Some(PathBuf::from(other)),
+            _ => usage(),
+        }
+    }
+    let path = resolve_save(path)?;
+    let bytes = std::fs::read(&path).with_context(|| format!("reading {}", path.display()))?;
+    println!("File: {}", path.display());
+    let turn = header::turn(&bytes)?;
+    println!("Turn: {turn}");
+
+    let Some(new_turn) = set else {
+        return Ok(());
+    };
+    let mut bytes = bytes;
+    header::set_turn(&mut bytes, new_turn)?;
+    backup_and_write(&path, &bytes)?;
+    println!("Turn set to {new_turn}.");
     Ok(())
 }
 

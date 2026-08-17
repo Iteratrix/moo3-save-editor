@@ -27,10 +27,20 @@ use crate::Species;
 /// Reversed-ASCII marker that opens the galaxy section.
 pub const GALAXY_MARKER: &[u8; 8] = b"VSYXALAG";
 
+/// Offset of the owner (empire id) byte within a region record.
+pub const OWNER_OFFSET: usize = 1;
+/// Offset of the 8-byte fixed-point population within a region record.
+pub const POP_OFFSET: usize = 2;
 /// Offset of the `race1` (species) byte within a region record.
 pub const RACE1_OFFSET: usize = 10;
 /// Offset of the `race2` (sub-race/magnate) byte within a region record.
 pub const RACE2_OFFSET: usize = 11;
+/// Offset of the terrain index byte within a region record.
+pub const TERRAIN_OFFSET: usize = 21;
+/// Offset of the base-ecosystem `i32` within a region record.
+pub const ECO_BASE_OFFSET: usize = 22;
+/// Offset of the modified-ecosystem `i32` within a region record.
+pub const ECO_MODIFIED_OFFSET: usize = 26;
 
 /// What kind of body a system's flag byte declares.
 ///
@@ -70,17 +80,27 @@ pub struct System {
 
 /// One populated region on a planet.
 ///
-/// `offset` is the absolute file offset of the region record; the species
-/// byte lives at `offset + RACE1_OFFSET`. Regions with zero population are
-/// parsed but not recorded.
+/// `offset` is the absolute file offset of the region record; the fixed
+/// fields live at `offset + *_OFFSET`. The field layout was verified
+/// against both the parser and the serializer of Bhruic's editor (see
+/// `docs/region-format.md`). Regions with zero population are parsed but
+/// not recorded.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Region {
     pub sys_idx: usize,
     pub planet_idx: usize,
     pub region_idx: usize,
+    /// Owning empire id (0 = unowned; the human player is empire 1).
+    pub owner: u8,
     pub species: Species,
     pub race2: u8,
     pub pop: f64,
+    /// Terrain type index into the game's terrain table.
+    pub terrain: u8,
+    /// Base ecosystem rating, roughly -2..=2.
+    pub eco_base: i32,
+    /// Modified ecosystem rating (base plus terraforming delta).
+    pub eco_modified: i32,
     pub offset: usize,
 }
 
@@ -124,18 +144,26 @@ impl Galaxy {
                 for region_idx in 0..usize::from(region_count) {
                     let offset = cursor.pos();
                     let RawRegion {
+                        owner,
                         species,
                         race2,
                         pop,
+                        terrain,
+                        eco_base,
+                        eco_modified,
                     } = read_region(&mut cursor)?;
                     if pop > 0.0 {
                         regions.push(Region {
                             sys_idx,
                             planet_idx,
                             region_idx,
+                            owner,
                             species,
                             race2,
                             pop,
+                            terrain,
+                            eco_base,
+                            eco_modified,
                             offset,
                         });
                     }
@@ -172,17 +200,26 @@ pub fn roman(mut n: usize) -> String {
 }
 
 struct RawRegion {
+    owner: u8,
     species: Species,
     race2: u8,
     pop: f64,
+    terrain: u8,
+    eco_base: i32,
+    eco_modified: i32,
 }
 
 fn read_region(cursor: &mut Cursor) -> Result<RawRegion> {
-    cursor.skip(1 + 1)?;
+    cursor.skip(1)?;
+    let owner = cursor.u8()?;
     let pop = cursor.fixed()?;
     let species = Species::from(cursor.u8()?);
     let race2 = cursor.u8()?;
-    cursor.skip(1 + 8 + 1 + 4 + 4 + 8 + 8 + 8)?;
+    cursor.skip(1 + 8)?;
+    let terrain = cursor.u8()?;
+    let eco_base = cursor.i32be()?;
+    let eco_modified = cursor.i32be()?;
+    cursor.skip(8 + 8 + 8)?;
 
     let specials = cursor.u8()?;
     for _ in 0..specials {
@@ -230,9 +267,13 @@ fn read_region(cursor: &mut Cursor) -> Result<RawRegion> {
 
     cursor.skip(1)?;
     Ok(RawRegion {
+        owner,
         species,
         race2,
         pop,
+        terrain,
+        eco_base,
+        eco_modified,
     })
 }
 

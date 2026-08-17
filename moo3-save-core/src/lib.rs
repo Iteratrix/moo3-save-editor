@@ -13,10 +13,14 @@
 //! # Layers
 //!
 //! - [`galaxy`]: systems, planets, and population regions — the parse that
-//!   locates every region's editable `race1`/`race2` bytes.
+//!   locates every region's editable fields (owner, population, species,
+//!   terrain, ecosystem).
 //! - [`species`]: the [`Species`] enum behind the `race1` byte.
 //! - [`empire`]: the empire table and player-ownership detection.
-//! - [`replace`]: plan a replacement, then patch it in place.
+//! - [`replace`]: plan a species replacement, then patch it in place.
+//! - [`edit`]: field-level region edits (population, owner, terrain,
+//!   ecosystem).
+//! - [`header`]: file-header fields (the turn counter).
 //! - [`verify`]: the check battery run by tests and `corpus`.
 //!
 //! # Example
@@ -36,9 +40,11 @@
 //! ```
 
 mod cursor;
+pub mod edit;
 pub mod empire;
 pub mod error;
 pub mod galaxy;
+pub mod header;
 pub mod replace;
 mod special;
 pub mod species;
