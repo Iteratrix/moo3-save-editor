@@ -48,6 +48,11 @@ Close the game before editing and keep the backup the page offers.
   where a specific species needs protecting), named planets (partial match —
   `Alrisha` covers the whole system), or galaxy-wide.
 - **Your systems only**: player ownership is auto-detected from the save.
+- **Region fields** (planet inspector): population per region, plus owner,
+  terrain, and ecosystem via the CLI. The layout was verified against both
+  the parser and the serializer of Bhruic's 2003 editor
+  (`docs/region-format.md`).
+- **The turn counter.**
 
 ## CLI
 
@@ -58,10 +63,13 @@ cargo run -p moo3-save-cli --release -- scan                # report, newest sav
 cargo run -p moo3-save-cli --release -- replace --dry-run   # preview the default Ithkul purge
 cargo run -p moo3-save-cli --release -- replace --target klackon --replace-with human --planet "Psi Tauri I"
 cargo run -p moo3-save-cli --release -- replace --mine --all --replace-with darlok
+cargo run -p moo3-save-cli --release -- planet "Alrisha"    # inspect regions (owner, pop, terrain, eco)
+cargo run -p moo3-save-cli --release -- edit --planet "Alrisha I" --region 0 --pop 5.5 --eco 2
+cargo run -p moo3-save-cli --release -- turn --set 100      # rewind the turn counter
 cargo run -p moo3-save-cli --release -- corpus <dir>        # verification battery over a save folder
 ```
 
-`replace` creates a `.bak` backup before writing.
+Commands that write create a `.bak` backup first.
 
 ## Format notes (for the curious)
 
