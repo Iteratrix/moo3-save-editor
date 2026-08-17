@@ -90,10 +90,18 @@ browser.on("error", (error) => {
 });
 
 function cleanup(code) {
-  browser.kill();
   server.close();
-  fs.rmSync(profile, { recursive: true, force: true });
-  process.exit(code);
+  browser.kill();
+  const removeProfile = () => {
+    try {
+      fs.rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch {
+      // A leftover temp dir must not fail the test run.
+    }
+    process.exit(code);
+  };
+  browser.once("exit", removeProfile);
+  setTimeout(removeProfile, 3000).unref();
 }
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
