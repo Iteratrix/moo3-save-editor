@@ -13,7 +13,7 @@ from collections import defaultdict
 from pathlib import Path
 from moo3save import (
     ITHKUL_RACE1, KLACKON_RACE1, SPECIES,
-    find_latest_save, parse_galaxy, planet_name,
+    find_latest_save, parse_galaxy, parse_player_systems, planet_name,
 )
 
 
@@ -37,7 +37,12 @@ def main():
         print(f"Parse error: {e}")
         sys.exit(1)
 
-    print(f"Parsed {system_count} systems, {len(regions)} populated regions\n")
+    print(f"Parsed {system_count} systems, {len(regions)} populated regions")
+
+    player_systems = parse_player_systems(data)
+    if player_systems:
+        print(f"Player owns {len(player_systems)} systems")
+    print()
 
     # Group by planet
     planets = defaultdict(list)
@@ -64,7 +69,10 @@ def main():
         sregs = sum(len(pl) for pl in pmap.values())
         grand_pop += spop
         grand_regions += sregs
-        print(f"\n  {sys_name}: {spop:.1f} pop in {sregs} regions on {len(pmap)} planet(s)")
+        # Check if any region in this system is player-owned
+        sys_idx = next(r['sys_idx'] for pl in pmap.values() for r in pl)
+        mine = " [YOURS]" if player_systems and sys_idx in player_systems else ""
+        print(f"\n  {sys_name}{mine}: {spop:.1f} pop in {sregs} regions on {len(pmap)} planet(s)")
         for p_idx in sorted(pmap):
             regs = pmap[p_idx]
             pn = planet_name(sys_name, p_idx)
@@ -73,6 +81,10 @@ def main():
 
     print(f"\n{'=' * 70}")
     print(f"TOTALS: {grand_pop:.1f} Ithkul in {grand_regions} regions across {len(ithkul_by_sys)} systems")
+    if player_systems:
+        player_ithkul = {s for s in ithkul_by_sys if any(
+            r['sys_idx'] in player_systems for pl in ithkul_by_sys[s].values() for r in pl)}
+        print(f"  YOUR systems with Ithkul: {len(player_ithkul)}")
     print(f"{'=' * 70}")
 
     # Find player's planets with Ithkul (any species cohabiting with Ithkul)

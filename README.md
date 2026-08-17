@@ -64,6 +64,9 @@ python3 moo3_replace.py --protect klackon            # only on planets with Klac
 # Replace ALL instances galaxy-wide
 python3 moo3_replace.py --target ithkul --replace-with darlok --all
 
+# Only replace on YOUR systems (auto-detects player ownership from save)
+python3 moo3_replace.py --mine --all --replace-with klackon
+
 # Preview changes without modifying
 python3 moo3_replace.py --dry-run
 
@@ -80,6 +83,7 @@ python3 moo3_replace.py path/to/save.gam
 | `--planet "<name>"` | Only affect this planet (repeatable, partial match) |
 | `--protect <species>` | Only affect planets where this species is present |
 | `--all` | Replace target species galaxy-wide |
+| `--mine` | Only affect systems owned by the player |
 | `--dry-run` | Preview changes without modifying the save |
 
 ### Windows

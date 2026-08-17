@@ -13,6 +13,7 @@ Usage:
     python3 moo3_replace.py --protect klackon        # only on planets with Klackons
     python3 moo3_replace.py --planet "Alrisha VII"   # specific planet
     python3 moo3_replace.py --all                    # galaxy-wide
+    python3 moo3_replace.py --mine --all             # all Ithkul on YOUR systems only
     python3 moo3_replace.py --dry-run                # preview without changing
 """
 import shutil
@@ -21,7 +22,7 @@ from collections import defaultdict
 from pathlib import Path
 from moo3save import (
     ITHKUL_RACE1, KLACKON_RACE1, SPECIES,
-    find_latest_save, parse_galaxy, planet_name,
+    find_latest_save, parse_galaxy, parse_player_systems, planet_name,
 )
 
 # Reverse lookup: name -> race1 ID
@@ -36,12 +37,15 @@ def parse_args():
     target = None
     planet_filters = []
     purge_all = False
+    mine_only = False
     dry_run = False
 
     i = 0
     while i < len(args):
         if args[i] == '--all':
             purge_all = True
+        elif args[i] == '--mine':
+            mine_only = True
         elif args[i] == '--dry-run':
             dry_run = True
         elif args[i] == '--replace-with' and i + 1 < len(args):
@@ -60,7 +64,7 @@ def parse_args():
             save_path = args[i]
         i += 1
 
-    return save_path, replace_with, protect, target, planet_filters, purge_all, dry_run
+    return save_path, replace_with, protect, target, planet_filters, purge_all, mine_only, dry_run
 
 
 def choose_replacement():
@@ -90,7 +94,7 @@ def choose_replacement():
 
 
 def main():
-    save_file, replace_with, protect, target, planet_filters, purge_all, dry_run = parse_args()
+    save_file, replace_with, protect, target, planet_filters, purge_all, mine_only, dry_run = parse_args()
 
     # Resolve --target species (defaults to Ithkul)
     all_species_by_name = {name.lower(): id for id, name in SPECIES.items()}
@@ -129,6 +133,15 @@ def main():
             input("\nPress Enter to exit...")
         sys.exit(1)
 
+    # Player ownership (for --mine flag)
+    player_systems = set()
+    if mine_only:
+        player_systems = parse_player_systems(data)
+        if not player_systems:
+            print("Could not detect player ownership from save file.")
+            sys.exit(1)
+        print(f"Player owns {len(player_systems)} systems")
+
     # Group by planet
     planets = defaultdict(list)
     for r in regions:
@@ -151,14 +164,23 @@ def main():
     patches = []
     if planet_filters:
         for key, regs in planets.items():
-            sys_name, _, p_idx = key
+            sys_name, sys_idx, p_idx = key
+            if mine_only and sys_idx not in player_systems:
+                continue
             pn = planet_name(sys_name, p_idx).lower()
             if any(f in pn for f in planet_filters):
                 patches.extend(r for r in regs if r['race1'] == target_race1)
     elif purge_all:
-        patches = [r for r in regions if r['race1'] == target_race1]
+        if mine_only:
+            patches = [r for r in regions
+                       if r['race1'] == target_race1 and r['sys_idx'] in player_systems]
+        else:
+            patches = [r for r in regions if r['race1'] == target_race1]
     else:
         for key, regs in planets.items():
+            sys_name, sys_idx, p_idx = key
+            if mine_only and sys_idx not in player_systems:
+                continue
             has_target = any(r['race1'] == target_race1 for r in regs)
             if protect_race1 is not None:
                 has_protected = any(r['race1'] == protect_race1 for r in regs)
@@ -191,8 +213,16 @@ def main():
         new_race1 = KLACKON_RACE1
         new_name = "Klackon"
 
-    scope = "on " + ", ".join(f'"{f}"' for f in planet_filters) if planet_filters else \
-            "galaxy-wide" if purge_all else "on shared planets"
+    scope_parts = []
+    if planet_filters:
+        scope_parts.append("on " + ", ".join(f'"{f}"' for f in planet_filters))
+    elif purge_all:
+        scope_parts.append("galaxy-wide")
+    else:
+        scope_parts.append("on shared planets")
+    if mine_only:
+        scope_parts.append("(your systems only)")
+    scope = " ".join(scope_parts)
     action = "Would convert" if dry_run else "Converting"
     print(f"\n{action} {len(patches)} {target_name} regions to {new_name} {scope}:\n")
 

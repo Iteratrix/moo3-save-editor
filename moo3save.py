@@ -116,6 +116,14 @@ def read_double(data, offset):
     return int_part + frac / 65536.0
 
 
+def write_double(data, offset, value):
+    """Write a MOO3 custom fixed-point value."""
+    int_part = int(value)
+    frac = int((value - int_part) * 65536) & 0xFFFF
+    data[offset:offset+6] = int_part.to_bytes(6, 'big', signed=True)
+    data[offset+6:offset+8] = frac.to_bytes(2, 'big')
+
+
 # ============================================================
 # Save format structure parsers
 # ============================================================
@@ -357,3 +365,217 @@ def roman(n):
 
 def planet_name(system, planet_idx):
     return f"{system} {roman(planet_idx + 1)}"
+
+
+# ============================================================
+# Empire & ownership parsing
+# ============================================================
+
+def parse_empires(data):
+    """Parse the empire definition table from the file header.
+
+    Returns list of {id, species, name} dicts, ordered as they appear.
+    The table starts after the language string and uses ECAR (reversed RACE)
+    markers with c1 XX record prefixes.
+    """
+    empires = []
+    # Empire table is in the first ~0x300 bytes, terminated by VSSEICEPS marker
+    end = data.find(b'VSSEICEPS', 0, 0x1000)
+    if end < 0:
+        end = 0x300
+
+    pos = 0
+    while pos < end:
+        # Look for c1 XX followed by 4-byte ASCII code + ECAR
+        ecar_pos = data.find(b'ECAR', pos, end)
+        if ecar_pos < 0:
+            break
+
+        # Species name: u32 length + UTF-16BE string
+        p = ecar_pos + 4
+        name_len = read_u32(data, p); p += 4
+        if name_len == 0 or name_len > 50:
+            pos = ecar_pos + 1
+            continue
+        species = read_utf16be(data, p, name_len); p += name_len * 2
+
+        # Empire name: u32 length + UTF-16BE string
+        empire_name_len = read_u32(data, p); p += 4
+        if empire_name_len == 0 or empire_name_len > 50:
+            pos = ecar_pos + 1
+            continue
+        empire_name = read_utf16be(data, p, empire_name_len); p += empire_name_len * 2
+
+        # Empire ID is in the c1 XX prefix before the 4-byte ASCII code
+        # c1 is at ecar_pos - 6, XX (empire ID) is at ecar_pos - 5
+        eid = data[ecar_pos - 5]
+
+        empires.append({'id': eid, 'species': species, 'name': empire_name})
+        pos = p
+
+    return empires
+
+
+def parse_system_names(data):
+    """Parse galaxy and return {sys_idx: name} mapping."""
+    marker = data.find(b'VSYXALAG')
+    if marker < 0:
+        raise ValueError("Galaxy marker VSYXALAG not found")
+
+    pos = marker + 8 + 4 + 1 + 60
+    system_count = data[pos]; pos += 1
+
+    names = {}
+    for sys_idx in range(system_count):
+        new_pos, name, flag = read_system_header(data, pos)
+        names[sys_idx] = name
+        pos = new_pos
+        if flag in (0x4E, 0x42):
+            continue
+        planet_count = data[pos]; pos += 1
+        for _ in range(planet_count):
+            region_count = data[pos]; pos += 1
+            for _ in range(region_count):
+                pos, _, _, _ = read_region(data, pos)
+            pos = read_post_region(data, pos)
+
+    return names
+
+
+def _find_sorted_pair_list(data, pos):
+    """Try to parse a sorted (sys_idx, 0x01) pair list at pos.
+
+    Returns (systems_set, end_pos) if valid, or (None, pos) if not.
+    """
+    count = data[pos]
+    if count > 250:
+        return None, pos
+    prev = -1
+    systems = set()
+    p = pos + 1
+    for _ in range(count):
+        if p + 1 >= len(data):
+            return None, pos
+        sys_idx = data[p]
+        flag = data[p + 1]
+        if flag != 1 or sys_idx <= prev:
+            return None, pos
+        prev = sys_idx
+        systems.add(sys_idx)
+        p += 2
+    return systems, p
+
+
+def parse_player_systems(data):
+    """Find the human player's owned system indices from the PLAYERSV section.
+
+    Each AI empire's PLAYERSV record ends with a shared block of sorted
+    system-index lists. The first list in this shared block is the player's
+    owned systems -- every AI empire keeps a copy so it knows what the player
+    controls.
+
+    We find it by collecting the first large sorted-pair list from each
+    empire's record (identified by empire name positions) and returning
+    the one that appears most often (present in every AI record).
+
+    Returns a set of system indices, or empty set if not found.
+    """
+    playersv = data.find(b'VSREYALP')
+    if playersv < 0:
+        return set()
+
+    # Find empire name positions in the PLAYERSV section.
+    # Empire names are stored as UTF-16BE preceded by a u32 length.
+    # We locate them by searching for the ECAR markers in the header,
+    # then finding each empire name string in the PLAYERSV section.
+    empires = parse_empires(data)
+    if not empires:
+        return set()
+
+    # Find each empire name's position within PLAYERSV
+    empire_positions = []
+    for emp in empires:
+        encoded = emp['name'].encode('utf-16-be')
+        pos = data.find(encoded, playersv)
+        if pos > 0:
+            empire_positions.append((emp['name'], emp['id'], pos))
+    empire_positions.sort(key=lambda x: x[2])
+
+    if len(empire_positions) < 3:
+        return set()
+
+    # For each empire record, find all large sorted-pair lists and collect
+    # their fingerprints (as frozensets of system indices).
+    from collections import Counter
+    list_counter = Counter()
+
+    for i, (name, eid, npos) in enumerate(empire_positions):
+        end = empire_positions[i + 1][2] if i + 1 < len(empire_positions) else min(npos + 0x200000, len(data))
+
+        # Scan for sorted-pair lists with count >= 10
+        pos = npos
+        while pos < end - 2:
+            systems, new_pos = _find_sorted_pair_list(data, pos)
+            if systems is not None and len(systems) >= 10:
+                list_counter[frozenset(systems)] += 1
+                pos = new_pos
+            else:
+                pos += 1
+
+    if not list_counter:
+        return set()
+
+    # The shared block at the end of each empire record contains ownership
+    # lists for all empires. The player's list is the one whose systems
+    # are dominated by the player's species.
+
+    # Find the player's species from the empire table (empire ID 1 is
+    # always the human player in MOO3).
+    player_species = None
+    for emp in empires:
+        if emp['id'] == 1:
+            player_species = emp['species']
+            break
+
+    # Map species names to race1 IDs
+    species_name_to_id = {name.lower(): rid for rid, name in SPECIES.items()}
+
+    # Get player's race1 ID (try exact match, then partial)
+    player_race1 = None
+    if player_species:
+        ps_lower = player_species.lower()
+        if ps_lower in species_name_to_id:
+            player_race1 = species_name_to_id[ps_lower]
+        else:
+            # Sub-race: look up parent (e.g. Tachidi -> Klackon)
+            # The empire table species is the sub-race name. Map common
+            # sub-races to their parent race1 IDs.
+            SUBRACE_MAP = {
+                'tachidi': KLACKON_RACE1, 'evon': 0, 'psilon': 0,
+                'nommo': 4, 'cynoid': 3, 'eoladi': 1,
+                'raas': 7, 'grendarl': 7, 'alkari': 13,
+            }
+            player_race1 = SUBRACE_MAP.get(ps_lower)
+
+    # Build system -> species population for scoring
+    regions_data, _ = parse_galaxy(data)
+    sys_pop = defaultdict(lambda: defaultdict(float))
+    for r in regions_data:
+        sys_pop[r['sys_idx']][r['race1']] += r['pop']
+
+    # Among all frequently-repeated lists (appear in 5+ empire records),
+    # pick the one whose systems have the most player-species population.
+    min_freq = max(3, max(list_counter.values()) // 2)
+    candidates = [(fs, cnt) for fs, cnt in list_counter.items()
+                  if cnt >= min_freq and len(fs) >= 10]
+
+    if not candidates:
+        return set()
+
+    def score(fs):
+        if player_race1 is None:
+            return 0
+        return sum(sys_pop[s].get(player_race1, 0) for s in fs)
+
+    best = max(candidates, key=lambda x: score(x[0]))
+    return set(best[0])
