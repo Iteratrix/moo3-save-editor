@@ -67,7 +67,7 @@ cargo run -p moo3-save-cli --release -- corpus <dir>        # verification batte
 
 A `.gam` save is one big-endian binary blob: UTF-16BE strings, a custom
 8-byte fixed-point number (6-byte signed integer + 1/65536 fraction), and
-section markers stored as reversed ASCII — `VS3RDAEH` is "HEADERS3V",
+section markers stored as reversed ASCII — `VS3RDAEH` is "HEADR3SV",
 `VSYXALAG` is "GALAXYSV". There are no checksums and almost no
 self-describing lengths, so the parser walks every system, planet, and
 population region structurally; a single mis-skip desyncs everything after

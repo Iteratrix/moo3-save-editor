@@ -4,7 +4,7 @@
 //! record per empire, each holding a `c1 <id>` prefix, a 4-byte ASCII code,
 //! the reversed marker `ECAR` ("RACE"), then two length-prefixed UTF-16BE
 //! strings — the picked species (sub-race) name and the empire name. The
-//! table ends at the `VSSEICEPS` ("SPECIESSV") marker. Empire ID 1 is
+//! table ends at the `VSEICEPS` ("SPECIESV") marker. Empire ID 1 is
 //! always the human player.
 //!
 //! Ownership lives (redundantly) in the `VSREYALP` ("PLAYERSV") section:
@@ -24,7 +24,7 @@ use crate::galaxy::Galaxy;
 use crate::Species;
 
 const RACE_MARKER: &[u8] = b"ECAR";
-const SPECIES_MARKER: &[u8] = b"VSSEICEPS";
+const SPECIES_MARKER: &[u8] = b"VSEICEPS";
 const PLAYERS_MARKER: &[u8] = b"VSREYALP";
 
 /// The ID of the human player's empire in every known save.
