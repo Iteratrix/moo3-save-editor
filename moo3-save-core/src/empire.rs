@@ -254,6 +254,5 @@ pub fn player_systems(data: &[u8], galaxy: &Galaxy) -> BTreeSet<usize> {
             best = Some((scored, systems));
         }
     }
-    best.map(|(_, systems)| systems.iter().map(|&idx| usize::from(idx)).collect())
-        .unwrap_or_default()
+    best.map_or_default(|(_, systems)| systems.iter().map(|&idx| usize::from(idx)).collect())
 }

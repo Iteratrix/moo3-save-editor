@@ -90,7 +90,9 @@ impl<'a> Cursor<'a> {
         };
         let bytes = self.take(byte_len)?;
         let units = bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|pair| u16::from_be_bytes([pair[0], pair[1]]));
         Ok(char::decode_utf16(units)
             .map(|unit| unit.unwrap_or(char::REPLACEMENT_CHARACTER))

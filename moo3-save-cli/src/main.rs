@@ -790,8 +790,7 @@ fn corpus(dir: &Path) -> anyhow::Result<()> {
     for path in &entries {
         let name = path
             .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
+            .map_or_default(|name| name.to_string_lossy().into_owned());
         match verdict_for(path) {
             Verdict::Pass(summary) => {
                 passed += 1;
