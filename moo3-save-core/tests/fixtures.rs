@@ -122,7 +122,7 @@ fn stale_plans_are_skipped_not_applied() {
     let mut bytes = fixture();
     let galaxy = Galaxy::parse(&bytes).expect("parses");
     let planned = replace::plan(&galaxy, Species::Ithkul, &Scope::Everywhere, None);
-    assert!(!planned.is_empty());
+    assert_ne!(planned, [] as [&moo3_save_core::galaxy::Region; 0]);
 
     let first = replace::apply(&mut bytes, &planned, Species::Ithkul, Species::Darlok);
     assert_eq!(first.skipped, 0);
