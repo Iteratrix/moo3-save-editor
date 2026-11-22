@@ -107,7 +107,9 @@ function cleanup(code) {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function cdpTarget() {
-  for (let i = 0; i < 50; i++) {
+  // Up to 30 s: a cold Chrome on a CI runner can take over 10 s to open its
+  // debugging port.
+  for (let i = 0; i < 150; i++) {
     try {
       const list = await fetch(`http://localhost:${CDP_PORT}/json`).then((r) => r.json());
       const page = list.find((t) => t.type === "page");

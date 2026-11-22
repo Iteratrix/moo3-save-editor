@@ -61,3 +61,14 @@ jobs:
           node scripts/bridge-test.mjs
       - name: UI test (headless Chrome over CDP)
         run: node scripts/ui-test.mjs
+
+  advisories:
+    # RustSec advisories for every crate in Cargo.lock (see deny.toml). Not a
+    # required check: a new advisory turns it red without blocking other PRs.
+    name: Advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories
